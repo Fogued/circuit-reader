@@ -1,0 +1,60 @@
+{
+  "val": {
+    "matcher (ground truth)": {
+      "texts": 1210,
+      "with unit": 0.998,
+      "attached": 0.999,
+      "distance-only class fits unit": 0.949,
+      "unit changed the choice": 0.051
+    },
+    "reader (ground-truth crops)": {
+      "exact match": 0.923,
+      "CER": 0.036
+    },
+    "reader history": [
+      {
+        "epoch": 1,
+        "train loss": 0.2701,
+        "exact match": 0.913,
+        "CER": 0.041
+      },
+      {
+        "epoch": 2,
+        "train loss": 0.1206,
+        "exact match": 0.917,
+        "CER": 0.037
+      },
+      {
+        "epoch": 3,
+        "train loss": 0.08,
+        "exact match": 0.923,
+        "CER": 0.036
+      }
+    ],
+    "end to end": {
+      "texts": 1210,
+      "found": 0.995,
+      "found and read": 0.921,
+      "found, read and attached": 0.921
+    }
+  },
+  "test": {
+    "matcher (ground truth)": {
+      "texts": 1194,
+      "with unit": 1.0,
+      "attached": 0.993,
+      "distance-only class fits unit": 0.949,
+      "unit changed the choice": 0.051
+    },
+    "reader (ground-truth crops)": {
+      "exact match": 0.914,
+      "CER": 0.04
+    },
+    "end to end": {
+      "texts": 1194,
+      "found": 0.996,
+      "found and read": 0.905,
+      "found, read and attached": 0.903
+    }
+  }
+}
