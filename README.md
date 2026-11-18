@@ -80,7 +80,7 @@ A review studio on top of the pipeline: upload an image, inspect the detections,
 
 ```bash
 pip install -r backend/requirements.txt
-pip install -r requirements.txt   # only needed in live mode (pins its own numpy)
+pip install -r requirements.txt   # live mode only: torch, ultralytics, transformers
 export CIRCUIT_DETECTOR=path/to/best.pt CIRCUIT_READER=path/to/trocr_values   # omit for demo mode
 export CORS_ORIGINS=http://localhost:5173                                      # comma separated, this is the default
 uvicorn backend.app.main:app

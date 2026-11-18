@@ -3,4 +3,4 @@ uvicorn[standard]==0.54.0
 python-multipart==0.0.34
 pydantic==2.14.3
 pillow==13.0.0
-numpy==2.5.5
+numpy==2.1.3  # same pin as the root requirements.txt (live mode installs both)
