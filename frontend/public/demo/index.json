@@ -1,8 +1,26 @@
 [
   {
-    "id": "synthetic-rc",
-    "title": "Synthetic RC circuit",
-    "image": "synthetic-rc.svg",
-    "result": "synthetic-rc.json"
+    "id": "circuit_779",
+    "title": "RLC network with DC sources",
+    "image": "circuit_779.jpg",
+    "result": "circuit_779.json"
+  },
+  {
+    "id": "circuit_934",
+    "title": "Step-input RLC circuit",
+    "image": "circuit_934.jpg",
+    "result": "circuit_934.json"
+  },
+  {
+    "id": "circuit_18",
+    "title": "Op-amp integrator and differentiator chain",
+    "image": "circuit_18.jpg",
+    "result": "circuit_18.json"
+  },
+  {
+    "id": "circuit_936",
+    "title": "MOSFET network with AC sources",
+    "image": "circuit_936.jpg",
+    "result": "circuit_936.json"
   }
 ]

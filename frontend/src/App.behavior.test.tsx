@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 
-const demo = (f: string) => readFileSync(join(__dirname, "..", "public", "demo", f), "utf8");
+const demo = (f: string) => readFileSync(join(__dirname, "..", "test-fixtures", "demo", f), "utf8");
 
 let onHealth: () => Promise<Response> = () => Promise.resolve(new Response("<html></html>", { status: 200 }));
 let onRead: () => Promise<Response> = () => Promise.resolve(new Response(demo("synthetic-rc.json")));

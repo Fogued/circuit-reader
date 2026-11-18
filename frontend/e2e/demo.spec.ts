@@ -1,7 +1,48 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const OHM = "Ω";
+
+// The interaction tests use a small synthetic fixture (with a deliberate misclassification) so their
+// expectations stay fixed; it is served in place of the public gallery, which holds real model outputs.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const FIXTURES = join(HERE, "..", "test-fixtures", "demo");
+const PUBLIC_DEMO = join(HERE, "..", "public", "demo");
+
+test.beforeEach(async ({ page }) => {
+  await page.route(/\/demo\/(index\.json|synthetic-rc\.(json|svg))$/, (route) => {
+    const file = new URL(route.request().url()).pathname.split("/").pop() as string;
+    return route.fulfill({
+      path: join(FIXTURES, file),
+      contentType: file.endsWith(".svg") ? "image/svg+xml" : "application/json",
+    });
+  });
+});
+
+test("the public gallery holds real model outputs", async ({ page }) => {
+  await page.unrouteAll();
+  await page.goto("/");
+  await expect(page.getByTestId("mode-badge")).toHaveText("Demo");
+  const index = JSON.parse(readFileSync(join(PUBLIC_DEMO, "index.json"), "utf8")) as {
+    id: string;
+    title: string;
+    result: string;
+  }[];
+  expect(index.length).toBeGreaterThan(0);
+  for (const e of index) {
+    await expect(page.getByRole("button", { name: `Open example: ${e.title}` })).toBeVisible();
+    const result = JSON.parse(readFileSync(join(PUBLIC_DEMO, e.result), "utf8"));
+    expect(result.source).toBe("model");
+  }
+  const first = index[0]!;
+  const result = JSON.parse(readFileSync(join(PUBLIC_DEMO, first.result), "utf8"));
+  await page.getByRole("button", { name: `Open example: ${first.title}` }).click();
+  await expect(page.getByTestId("comp-box")).toHaveCount(result.components.length);
+  await expect(page.getByTestId("text-box")).toHaveCount(result.texts.length);
+  await expect(page.getByTestId("synthetic-note")).toHaveCount(0);
+});
 
 async function openExample(page: Page) {
   await page.goto("/");
@@ -119,6 +160,19 @@ test("no horizontal scroll on a phone", async ({ page }) => {
     if (tab === "metrics") await page.getByRole("tab", { name: "Metrics" }).click();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
+  }
+});
+
+test("no horizontal scroll on a phone with any real example (wide and tall drawings)", async ({ page }) => {
+  await page.unrouteAll();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const index = JSON.parse(readFileSync(join(PUBLIC_DEMO, "index.json"), "utf8")) as { title: string }[];
+  for (const e of index) {
+    await page.getByRole("button", { name: `Open example: ${e.title}` }).click();
+    await expect(page.getByTestId("overlay")).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, e.title).toBeLessThanOrEqual(0);
   }
 });
 

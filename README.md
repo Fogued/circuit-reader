@@ -99,7 +99,7 @@ npm --prefix frontend install
 npm --prefix frontend run dev        # http://localhost:5173, proxies /api to the backend
 ```
 
-**Demo-only build (static hosting).** `VITE_BASE=/circuit-reader/ npm --prefix frontend run build` produces a static site that needs no backend: the Metrics tab uses the bundled `results/` files and the gallery uses the examples in `frontend/public/demo/`. The manual workflow [`pages.yml`](.github/workflows/pages.yml) deploys it to Pages. To add real examples, run `python scripts/export_demo.py image.jpg --detector best.pt --reader trocr_values`.
+**Demo-only build (static hosting).** `VITE_BASE=/circuit-reader/ npm --prefix frontend run build` produces a static site that needs no backend: the Metrics tab uses the bundled `results/` files and the gallery shows four test-split circuits read by the trained model (`frontend/public/demo/`, never seen in training; two of them contain real reading errors to correct in the review panel). The manual workflow [`pages.yml`](.github/workflows/pages.yml) deploys it to Pages. To add real examples, run `python scripts/export_demo.py image.jpg --detector best.pt --reader trocr_values`.
 
 **Tests.** `pytest backend/tests tests` mocks the reader and needs neither the weights nor torch. [`ci.yml`](.github/workflows/ci.yml) runs ruff, mypy and pytest for the backend, and lint, type check, tests and build for the frontend.
 

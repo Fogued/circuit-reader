@@ -938,6 +938,8 @@ main {
     min-height: 220px;
     max-height: 62vh;
     aspect-ratio: var(--ar, 4 / 3);
+    /* without an explicit width, min-height would widen a very wide image's viewer past the screen */
+    width: 100%;
   }
 }
 
@@ -1351,6 +1353,8 @@ button.danger {
     min-height: 220px;
     max-height: 62vh;
     aspect-ratio: var(--ar, 4 / 3);
+    /* without an explicit width, min-height would widen a very wide image's viewer past the screen */
+    width: 100%;
   }
 }
 @media (max-width: 800px) {
