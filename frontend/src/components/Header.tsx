@@ -4,6 +4,7 @@ export type Mode = "checking" | "live" | "demo";
 export type Tab = "review" | "metrics";
 
 const REPO = "https://github.com/Fogued/circuit-reader";
+const NOTEBOOK = "https://www.kaggle.com/code/diegofogued/circuit-reader";
 
 export function Header(p: { mode: Mode; detail?: string | null; tab: Tab; onTab: (t: Tab) => void }) {
   return (
@@ -32,7 +33,7 @@ export function Header(p: { mode: Mode; detail?: string | null; tab: Tab; onTab:
         </div>
         <nav className="links" aria-label="Project links">
           <a href={REPO} target="_blank" rel="noreferrer">GitHub</a>
-          <a href={`${REPO}/blob/main/circuit-reader.ipynb`} target="_blank" rel="noreferrer">Notebook</a>
+          <a href={NOTEBOOK} target="_blank" rel="noreferrer">Notebook</a>
         </nav>
       </div>
       <div className="tabs" role="tablist" aria-label="Sections">

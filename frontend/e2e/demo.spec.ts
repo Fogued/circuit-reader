@@ -223,3 +223,12 @@ test("class labels do not sit on top of text boxes", async ({ page }) => {
   });
   expect(overlaps).toBe(0);
 });
+
+test("header links to the repository and the Kaggle notebook", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", "https://github.com/Fogued/circuit-reader");
+  await expect(page.getByRole("link", { name: "Notebook" })).toHaveAttribute(
+    "href",
+    "https://www.kaggle.com/code/diegofogued/circuit-reader",
+  );
+});
