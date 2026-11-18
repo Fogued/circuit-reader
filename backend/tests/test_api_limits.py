@@ -63,6 +63,7 @@ def test_content_length_rejected_early_413(live: TestClient, fake: FakeReader) -
         headers={"content-type": "multipart/form-data; boundary=b", "content-length": str(MAX_UPLOAD_BYTES + 70_000)},
     )
     assert r.status_code == 413
+    assert r.headers["connection"] == "close"
     assert fake.calls == []
 
 

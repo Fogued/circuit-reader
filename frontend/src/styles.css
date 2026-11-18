@@ -1416,7 +1416,7 @@ button.danger {
   left: 0;
   z-index: 5;
   width: max-content;
-  max-width: min(320px, 80vw);
+  max-width: min(320px, calc(100vw - 32px));
   padding: 6px 10px;
   background: var(--surface);
   color: var(--text);

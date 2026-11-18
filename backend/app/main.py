@@ -146,7 +146,11 @@ class UploadSizeLimit:
 
     @staticmethod
     async def _reject(scope: Scope, receive: Receive, send: Send) -> None:
-        await JSONResponse({"detail": "file too large (max 10 MB)"}, status_code=413)(scope, receive, send)
+        # connection: close makes the server drop the socket instead of draining the rest of the body
+        response = JSONResponse(
+            {"detail": "file too large (max 10 MB)"}, status_code=413, headers={"connection": "close"}
+        )
+        await response(scope, receive, send)
 
 
 def create_app() -> FastAPI:

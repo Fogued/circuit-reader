@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { demoUrl, pollUntilLive, probeHealth, readImage, waitForHealth } from "./api";
+import { TIMEOUT_MESSAGE, demoUrl, pollUntilLive, probeHealth, readImage, waitForHealth } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -154,5 +154,51 @@ describe("readImage", () => {
     await readImage(new File(["x"], "a.png"), { comp_conf: 0.5, text_conf: 0.25 });
     expect(fn.mock.calls[0]?.[0]).toBe("/api/read?comp_conf=0.5&text_conf=0.25");
     expect((fn.mock.calls[0]?.[1] as RequestInit).method).toBe("POST");
+  });
+});
+
+describe("without AbortSignal.any", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("still detects live mode and honours the caller's signal", async () => {
+    const orig = AbortSignal.any;
+    // @ts-expect-error simulate an older browser
+    delete AbortSignal.any;
+    try {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(okHealth)));
+      expect(await probeHealth(3000, new AbortController().signal)).toEqual({ state: "ok", health: okHealth });
+      const ac = new AbortController();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_u: string, init: RequestInit) => new Promise((_r, rej) => init.signal?.addEventListener("abort", () => rej(new DOMException("x", "AbortError"))))),
+      );
+      const p = probeHealth(3000, ac.signal);
+      ac.abort();
+      await expect(p).rejects.toMatchObject({ name: "AbortError" });
+    } finally {
+      AbortSignal.any = orig;
+    }
+  });
+  it("lets non-network errors surface", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new RangeError("bug")));
+    await expect(probeHealth()).rejects.toThrow("bug");
+  });
+});
+
+describe("pollUntilLive on a static host", () => {
+  it("stops after an unreachable probe", async () => {
+    const fn = vi.fn().mockResolvedValue(json({}, 404));
+    vi.stubGlobal("fetch", fn);
+    expect(await pollUntilLive({ intervalMs: 1, sleep: () => Promise.resolve() })).toBeNull();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("readImage timeout", () => {
+  it("fails with a clear message when the server hangs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_u: string, init: RequestInit) => new Promise((_r, rej) => init.signal?.addEventListener("abort", () => rej(new DOMException("x", "AbortError"))))),
+    );
+    await expect(readImage(new File(["x"], "a.png"), undefined, { timeoutMs: 20 })).rejects.toThrow(TIMEOUT_MESSAGE);
   });
 });

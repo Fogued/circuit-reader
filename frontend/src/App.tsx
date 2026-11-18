@@ -35,6 +35,7 @@ export default function App() {
   // Only one upload/read at a time: busyRef guards synchronously, requestId discards stale results.
   const busyRef = useRef(false);
   const requestId = useRef(0);
+  const unmounted = useRef(new AbortController());
 
   // Health: retry through the initial budget (the server may still be starting), then keep polling slowly in
   // demo mode and switch to live when the backend comes up. The cleanup cancels every timer and request.
@@ -61,12 +62,14 @@ export default function App() {
   }, []);
 
   // Results of requests started before an unmount (or superseded) are discarded.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    unmounted.current = new AbortController(); // fresh per mount: StrictMode mounts twice
+    const ac = unmounted.current;
+    return () => {
       requestId.current += 1;
-    },
-    [],
-  );
+      ac.abort();
+    };
+  }, []);
 
   useEffect(
     () => () => {
@@ -126,7 +129,7 @@ export default function App() {
           setMessage(null);
         }
         if (m !== "live") return setMessage({ kind: "info", text: DEMO_NOTICE });
-        const result = await readImage(file);
+        const result = await readImage(file, undefined, { signal: unmounted.current.signal });
         if (!current()) return;
         if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
         objectUrl.current = URL.createObjectURL(file);

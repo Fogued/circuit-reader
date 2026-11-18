@@ -2,9 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Component, TextItem } from "../types";
 import type { Action, Doc } from "../state/reducer";
 import { needsReview, visibleItems } from "../state/reducer";
-import { norm } from "../lib/units";
 import { COMPONENT_CLASSES, classColor } from "../lib/classes";
-import { engineering, unitOf } from "../lib/units";
+import { engineering, norm, unitOf } from "../lib/units";
 
 export interface Limits {
   compMin: number;

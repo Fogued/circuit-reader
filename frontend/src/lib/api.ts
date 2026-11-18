@@ -28,15 +28,55 @@ export type HealthProbe =
    */
   | { state: "pending" };
 
+/**
+ * One signal that aborts when any of the given ones does. Uses AbortSignal.any where it exists (Safari 17.4,
+ * Chrome 116, Firefox 124) and chains the signals by hand elsewhere. dispose() removes the listeners.
+ */
+export function combineSignals(signals: AbortSignal[]): { signal: AbortSignal; dispose: () => void } {
+  if (typeof AbortSignal.any === "function") return { signal: AbortSignal.any(signals), dispose: () => undefined };
+  const ac = new AbortController();
+  const cleanups: (() => void)[] = [];
+  const dispose = () => cleanups.forEach((c) => c());
+  for (const s of signals) {
+    if (s.aborted) {
+      ac.abort(s.reason);
+      break;
+    }
+    const onAbort = () => {
+      ac.abort(s.reason);
+      dispose();
+    };
+    s.addEventListener("abort", onAbort, { once: true });
+    cleanups.push(() => s.removeEventListener("abort", onAbort));
+  }
+  return { signal: ac.signal, dispose };
+}
+
+/** A timeout signal that also works where AbortSignal.timeout does not exist; dispose() clears the timer. */
+function timeoutSignal(ms: number): { signal: AbortSignal; dispose: () => void } {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(new DOMException("timeout", "TimeoutError")), ms);
+  return { signal: ac.signal, dispose: () => clearTimeout(timer) };
+}
+
+const isNetworkError = (e: unknown): boolean =>
+  e instanceof TypeError || (e instanceof DOMException && (e.name === "AbortError" || e.name === "TimeoutError"));
+
 export async function probeHealth(timeoutMs = 3000, signal?: AbortSignal): Promise<HealthProbe> {
+  const limit = timeoutSignal(timeoutMs);
+  const { signal: both, dispose } = combineSignals(signal ? [signal, limit.signal] : [limit.signal]);
   let res: Response;
   try {
-    const limit = AbortSignal.timeout(timeoutMs);
-    res = await fetch(`${API}/api/health`, { signal: signal ? AbortSignal.any([signal, limit]) : limit });
+    res = await fetch(`${API}/api/health`, { signal: both });
   } catch (e) {
     // The caller cancelled: do not report a state for it.
     if (signal?.aborted) throw e instanceof DOMException ? e : new DOMException("aborted", "AbortError");
-    return { state: "pending" };
+    // Only network failures and the per-try timeout mean "not there yet"; anything else is a bug.
+    if (isNetworkError(e)) return { state: "pending" };
+    throw e;
+  } finally {
+    dispose();
+    limit.dispose();
   }
   if (res.status >= 500) return { state: "pending" };
   if (!res.ok) return { state: "unreachable" };
@@ -119,17 +159,39 @@ export async function pollUntilLive(o: PollOptions = {}): Promise<Health | null>
     try {
       const r = await probeHealth(timeoutMs, signal);
       if (r.state === "ok" && r.health.mode === "live") return r.health;
+      if (r.state === "unreachable") return null;
     } catch {
       return null;
     }
   }
 }
 
-export async function readImage(file: File, thresholds?: { comp_conf: number; text_conf: number }): Promise<ReadResult> {
+export const READ_TIMEOUT_MS = 120_000;
+export const TIMEOUT_MESSAGE = "The server took too long to answer. Try again.";
+
+export async function readImage(
+  file: File,
+  thresholds?: { comp_conf: number; text_conf: number },
+  o: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<ReadResult> {
   const form = new FormData();
   form.append("file", file);
   const q = thresholds ? `?comp_conf=${thresholds.comp_conf}&text_conf=${thresholds.text_conf}` : "";
-  const res = await fetch(`${API}/api/read${q}`, { method: "POST", body: form });
+  const limit = timeoutSignal(o.timeoutMs ?? READ_TIMEOUT_MS);
+  const { signal, dispose } = combineSignals(o.signal ? [o.signal, limit.signal] : [limit.signal]);
+  try {
+    return await readWith(`${API}/api/read${q}`, form, signal);
+  } catch (e) {
+    if (limit.signal.aborted && !o.signal?.aborted) throw new Error(TIMEOUT_MESSAGE, { cause: e });
+    throw e;
+  } finally {
+    dispose();
+    limit.dispose();
+  }
+}
+
+async function readWith(url: string, form: FormData, signal: AbortSignal): Promise<ReadResult> {
+  const res = await fetch(url, { method: "POST", body: form, signal });
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
     try {

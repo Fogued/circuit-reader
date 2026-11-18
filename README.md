@@ -111,4 +111,4 @@ npm --prefix frontend run dev        # http://localhost:5173, proxies /api to th
 
 ## Licences
 
-This repository: AGPL-3.0 (see [LICENSE](LICENSE)) · Dataset: CC BY 4.0 ([Ahmed et al., *Data in Brief*](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11808513/)) · Ultralytics YOLO: AGPL-3.0 · TrOCR: see the [model card](https://huggingface.co/microsoft/trocr-base-handwritten).
+This repository: AGPL-3.0 (see [LICENSE](LICENSE)) · Dataset: CC BY 4.0 ([Ahmed et al., *Data in Brief*](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11808513/)) · Ultralytics YOLO: AGPL-3.0 · TrOCR: see the [model card](https://huggingface.co/microsoft/trocr-base-handwritten) · Web fonts Inter and IBM Plex Mono: SIL OFL 1.1 (see [THIRD_PARTY_NOTICES.md](frontend/THIRD_PARTY_NOTICES.md)).
