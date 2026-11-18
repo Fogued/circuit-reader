@@ -10,8 +10,8 @@ Reads hand-drawn electrical circuits: finds every component, reads the handwritt
 
 | Stage | Result |
 |---|---|
-| Component detection (17 classes) | mAP50 **0.989**, mAP50-95 **0.814**; 98.8 % of components found with the correct class |
-| Text detection | AP50 **0.994**; 1,188 of 1,194 values found |
+| Component detection (17 classes) | mAP50 **0.989**, mAP50-95 **0.814**; mean per-class recall **0.989** |
+| Text detection | AP50 **0.994**; **99.6 %** of the 1,194 values found |
 | Value reading (detect + read + attach) | **90.3 %** of values read exactly and attached to a compatible component |
 
 Every choice (thresholds, best epoch) is made on validation; the test set is evaluated once.
@@ -19,7 +19,7 @@ Every choice (thresholds, best epoch) is made on validation; the test set is eva
 ## How it works
 
 1. **Detect:** one YOLO11m at 1024 px finds the 17 component classes and the handwritten text (an 18th class) in a single pass.
-2. **Read:** TrOCR (`microsoft/trocr-base-handwritten`), fine-tuned on the dataset's text crops. Exact match goes from ~11 % out of the box to 91.4 %.
+2. **Read:** TrOCR (`microsoft/trocr-base-handwritten`), fine-tuned on the dataset's text crops. Fine-tuning brings exact match on ground-truth crops to 91.4 % (test); the off-the-shelf model reads almost none of them (~11 % on validation, printed in section 2.1 of the notebook).
 3. **Match:** the unit limits which components a value can belong to (`Ω` → resistor, `F` → capacitor, `V` → voltage source…), then the value goes to the nearest allowed one.
 
 Data: [Digitize-HCD](https://data.mendeley.com/datasets/rngcz5wtv8/1), 1,277 scanned circuits, split 80/10/10 by image. Detailed metrics are in [`results/`](results/).
@@ -35,11 +35,73 @@ model = YOLO("detector_yolo11m_1024/weights/best.pt")
 model.predict("your_circuit.png", imgsz=1024, conf=0.59, save=True)
 ```
 
-Tuned thresholds: 0.71 for components, 0.59 for text. On photos rather than scans, try 0.25.
+Tuned thresholds: 0.71 for components, 0.59 for text (see [`results/detection_summary.json`](results/detection_summary.json)). On photos rather than scans, try 0.25.
+
+### Full pipeline (detect, read, match)
+
+`circuit_reader.py` wraps the whole pipeline. It needs the detector from the Release **and** the fine-tuned TrOCR reader. The reader is **not** in the Release (about 1.3 GB): produce it by running the notebook, which saves it in the folder `trocr_values`.
+
+```python
+from circuit_reader import CircuitReader
+
+reader = CircuitReader("detector_yolo11m_1024/weights/best.pt", "trocr_values")  # comp_conf≈0.71, text_conf≈0.59
+components, items = reader.read("your_circuit.png")
+for item in items:  # keys: text, text_box, cls, comp_box, value
+    print(item["text"], "->", item["cls"], item["value"])
+```
+
+Or from the command line (prints JSON):
+
+```bash
+python circuit_reader.py your_circuit.png --detector detector_yolo11m_1024/weights/best.pt --reader trocr_values
+```
+
+Install the dependencies with `pip install -r requirements.txt`. [`results/pip_freeze.txt`](results/pip_freeze.txt) is the exact Kaggle environment. Load only trusted weights: `.pt` files are pickles and can run code when loaded.
 
 ## Reproduce
 
-Run [`circuit-reader.ipynb`](circuit-reader.ipynb) on [Kaggle](https://www.kaggle.com/code/diegofogued/circuit-reader) with the [Digitize-HCD dataset](https://www.kaggle.com/datasets/diegofogued/digitize-hcd), a T4 GPU and Internet on. It trains everything from scratch in about 2.5 h. Set `RUN_TEST = True` only for the final run.
+Run [`circuit-reader.ipynb`](circuit-reader.ipynb) on [Kaggle](https://www.kaggle.com/code/diegofogued/circuit-reader) with the [Digitize-HCD dataset](https://www.kaggle.com/datasets/diegofogued/digitize-hcd), a T4 GPU and Internet on. It fine-tunes the pretrained YOLO11m (COCO) and TrOCR models end to end on the dataset in about 2.5 h. Set `RUN_TEST = True` only for the final run.
+
+## Development
+
+```bash
+pip install -r requirements-dev.txt   # backend + test tools only, no torch
+pytest backend/tests tests
+ruff check .
+ruff format --check .
+mypy circuit_reader.py backend tests scripts
+```
+
+## Web app
+
+A review studio on top of the pipeline: upload an image, inspect the detections, correct classes, values and links, export the corrected labels (JSON, or YOLO `.txt` in the notebook's format) and browse the model metrics. The code is in [`backend/`](backend) (FastAPI) and `frontend/` (Vite, React, TypeScript).
+
+**Backend.** Without weights it runs in demo mode: `/api/health` and `/api/metrics` work, `/api/read` answers 503.
+
+```bash
+pip install -r backend/requirements.txt
+pip install -r requirements.txt   # live mode only: torch, ultralytics, transformers
+export CIRCUIT_DETECTOR=path/to/best.pt CIRCUIT_READER=path/to/trocr_values   # omit for demo mode
+export CORS_ORIGINS=http://localhost:5173                                      # comma separated, this is the default
+uvicorn backend.app.main:app
+```
+
+| Endpoint | |
+| --- | --- |
+| `GET /api/health` | `{"status", "mode": "live" or "demo", "classes", "detail"}` (`detail` is set when model loading failed) |
+| `POST /api/read` | multipart field `file` (PNG, JPEG or WEBP, up to 10 MB); optional query `comp_conf`, `text_conf` in [0, 1]; returns components, texts, links and values |
+| `GET /api/metrics` | detection and value summaries and the per-class tables of `results/` |
+
+**Frontend.**
+
+```bash
+npm --prefix frontend install
+npm --prefix frontend run dev        # http://localhost:5173, proxies /api to the backend
+```
+
+**Demo-only build (static hosting).** `VITE_BASE=/circuit-reader/ npm --prefix frontend run build` produces a static site that needs no backend: the Metrics tab uses the bundled `results/` files and the gallery uses the examples in `frontend/public/demo/`. The manual workflow [`pages.yml`](.github/workflows/pages.yml) deploys it to Pages. To add real examples, run `python scripts/export_demo.py image.jpg --detector best.pt --reader trocr_values`.
+
+**Tests.** `pytest backend/tests tests` mocks the reader and needs neither the weights nor torch. [`ci.yml`](.github/workflows/ci.yml) runs ruff, mypy and pytest for the backend, and lint, type check, tests and build for the frontend.
 
 ## Limitations
 
@@ -49,4 +111,4 @@ Run [`circuit-reader.ipynb`](circuit-reader.ipynb) on [Kaggle](https://www.kaggl
 
 ## Licences
 
-Dataset: CC BY 4.0 ([Ahmed et al., *Data in Brief*](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11808513/)) · Ultralytics YOLO: AGPL-3.0 · TrOCR: see the [model card](https://huggingface.co/microsoft/trocr-base-handwritten).
+This repository: AGPL-3.0 (see [LICENSE](LICENSE)) · Dataset: CC BY 4.0 ([Ahmed et al., *Data in Brief*](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11808513/)) · Ultralytics YOLO: AGPL-3.0 · TrOCR: see the [model card](https://huggingface.co/microsoft/trocr-base-handwritten) · Web fonts Inter and IBM Plex Mono: SIL OFL 1.1 (see [THIRD_PARTY_NOTICES.md](frontend/THIRD_PARTY_NOTICES.md)).

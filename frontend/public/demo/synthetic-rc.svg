@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480">
+  <rect width="800" height="480" fill="#fbfaf6"/>
+  <g fill="none" stroke="#23262b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- top rail with resistor R1 -->
+    <path d="M120 200 L121 101 L258 100"/>
+    <path d="M258 100 L272 80 L288 120 L304 80 L320 120 L336 80 L350 100 L561 101 L560 150"/>
+    <!-- voltage source -->
+    <circle cx="120" cy="240" r="38"/>
+    <path d="M120 215 L120 229 M113 222 L127 222 M110 258 L130 258"/>
+    <!-- branch: this second zigzag is a resistor; the fixture deliberately labels it Inductor so the review flow has a class to correct -->
+    <path d="M560 150 L542 166 L578 182 L542 198 L578 214 L542 230 L560 246 L561 288"/>
+    <path d="M535 290 L586 291 M536 312 L585 311"/>
+    <path d="M561 312 L560 400"/>
+    <!-- bottom rail and ground -->
+    <path d="M120 280 L121 400 L560 401"/>
+    <path d="M400 400 L401 430 M372 430 L430 431 M382 441 L420 440 M392 452 L410 452"/>
+  </g>
+  <g fill="#23262b" font-family="'Segoe Print','Comic Sans MS','Bradley Hand',cursive" font-size="26">
+    <text x="22" y="248">10V</text>
+    <text x="276" y="68">1kΩ</text>
+    <text x="600" y="212">4.7k</text>
+    <text x="604" y="312">10μF</text>
+  </g>
+</svg>
