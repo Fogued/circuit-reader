@@ -205,6 +205,7 @@ class CircuitReader:
         self.text_conf = text_conf
         self.imgsz = imgsz
         self.detector = YOLO(str(detector))
+        # class ids follow the training order (alphabetical by name, as on the confusion-matrix axes)
         names: dict[int, str] = dict(self.detector.names)
         self.names = names
         text_cls = next((i for i, n in names.items() if n == "text"), None)

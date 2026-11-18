@@ -79,7 +79,7 @@ def post(client: TestClient, data: bytes, content_type: str = "image/png", **par
 def test_health_demo(demo: TestClient) -> None:
     r = demo.get("/api/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "mode": "demo", "classes": list(COMPONENT_CLASSES)}
+    assert r.json() == {"status": "ok", "mode": "demo", "classes": list(COMPONENT_CLASSES), "detail": None}
 
 
 def test_health_live(live: TestClient) -> None:

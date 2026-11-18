@@ -40,6 +40,12 @@ def main() -> None:
 
     import cv2
 
+    seen: dict[str, Path] = {}
+    for path in args.images:
+        if path.stem in seen:
+            sys.exit(f"duplicate image name '{path.stem}': {seen[path.stem]} and {path} (rename one of them)")
+        seen[path.stem] = path
+
     reader = CircuitReader(args.detector, args.reader, comp_conf=args.comp_conf, text_conf=args.text_conf)
     args.out.mkdir(parents=True, exist_ok=True)
     for path in args.images:

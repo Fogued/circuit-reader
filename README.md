@@ -65,7 +65,7 @@ Run [`circuit-reader.ipynb`](circuit-reader.ipynb) on [Kaggle](https://www.kaggl
 ## Development
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt   # backend + test tools only, no torch
 pytest backend/tests tests
 ruff check .
 ruff format --check .
@@ -79,7 +79,8 @@ A review studio on top of the pipeline: upload an image, inspect the detections,
 **Backend.** Without weights it runs in demo mode: `/api/health` and `/api/metrics` work, `/api/read` answers 503.
 
 ```bash
-pip install -r requirements.txt -r backend/requirements.txt   # the first file is only needed in live mode
+pip install -r backend/requirements.txt
+pip install -r requirements.txt   # only needed in live mode (pins its own numpy)
 export CIRCUIT_DETECTOR=path/to/best.pt CIRCUIT_READER=path/to/trocr_values   # omit for demo mode
 export CORS_ORIGINS=http://localhost:5173                                      # comma separated, this is the default
 uvicorn backend.app.main:app
@@ -87,7 +88,7 @@ uvicorn backend.app.main:app
 
 | Endpoint | |
 | --- | --- |
-| `GET /api/health` | `{"status", "mode": "live" or "demo", "classes"}` |
+| `GET /api/health` | `{"status", "mode": "live" or "demo", "classes", "detail"}` (`detail` is set when model loading failed) |
 | `POST /api/read` | multipart field `file` (PNG, JPEG or WEBP, up to 10 MB); optional query `comp_conf`, `text_conf` in [0, 1]; returns components, texts, links and values |
 | `GET /api/metrics` | detection and value summaries and the per-class tables of `results/` |
 

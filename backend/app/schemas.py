@@ -9,8 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field
 # x1, y1, x2, y2 in image pixels
 Box = Annotated[tuple[float, float, float, float], Field(description="x1, y1, x2, y2 in image pixels")]
 
-# The 17 component classes in detector order: ids 0-16, alphabetical as in training (see the axes of
-# results/figures/test_confusion_matrix.png). "text" is detector class 17 and is not listed.
+# The 17 component classes in detector order: ids 0-16 follow the training order (alphabetical by name, as
+# shown on the confusion-matrix axes of results/figures/test_confusion_matrix.png). "text" is detector
+# class 17 and is not listed.
 COMPONENT_CLASSES: tuple[str, ...] = (
     "BJT-NPN",
     "BJT-PNP",
@@ -36,6 +37,7 @@ class Health(BaseModel):
     status: Literal["ok"] = "ok"
     mode: Literal["live", "demo"]
     classes: list[str]
+    detail: str | None = None
 
 
 class ImageInfo(BaseModel):

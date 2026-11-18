@@ -1,6 +1,6 @@
--r requirements.txt
+# Tests mock the reader: no torch, ultralytics or transformers needed.
 -r backend/requirements.txt
-pytest
-ruff
-mypy
-httpx
+pytest==9.2.0
+ruff==0.17.5
+mypy==2.4.1
+httpx==0.28.1
