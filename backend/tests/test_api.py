@@ -91,7 +91,8 @@ def test_health_live(live: TestClient) -> None:
 def test_classes_match_metrics_csv() -> None:
     with (RESULTS / "test_per_class_metrics.csv").open(encoding="utf-8") as f:
         names = [r["class"] for r in csv.DictReader(f) if r["class"] != "text"]
-    assert list(COMPONENT_CLASSES) == names
+    # same set as the metrics; order is the detector's (alphabetical, see the training confusion matrix)
+    assert sorted(names) == list(COMPONENT_CLASSES)
 
 
 @pytest.mark.parametrize(("fmt", "mime"), [("PNG", "image/png"), ("JPEG", "image/jpeg"), ("WEBP", "image/webp")])

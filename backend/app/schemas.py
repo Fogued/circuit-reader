@@ -9,26 +9,26 @@ from pydantic import BaseModel, ConfigDict, Field
 # x1, y1, x2, y2 in image pixels
 Box = Annotated[tuple[float, float, float, float], Field(description="x1, y1, x2, y2 in image pixels")]
 
-# The 17 component classes (text is the 18th detector class and is not listed), in the order of
-# results/*_per_class_metrics.csv.
+# The 17 component classes in detector order: ids 0-16, alphabetical as in training (see the axes of
+# results/figures/test_confusion_matrix.png). "text" is detector class 17 and is not listed.
 COMPONENT_CLASSES: tuple[str, ...] = (
-    "V-DC (one port)",
-    "GND",
-    "Diode",
-    "Capacitor",
-    "Resistor",
-    "Inductor",
-    "MOSFET-P",
-    "Wire Crossover",
-    "BJT-PNP",
-    "Zener Diode",
     "BJT-NPN",
-    "I-DC",
-    "MOSFET-N",
+    "BJT-PNP",
+    "Capacitor",
+    "Diode",
+    "GND",
     "I-AC",
-    "V-DC",
+    "I-DC",
+    "Inductor",
+    "MOSFET-N",
+    "MOSFET-P",
     "Op-Amp",
+    "Resistor",
     "V-AC",
+    "V-DC",
+    "V-DC (one port)",
+    "Wire Crossover",
+    "Zener Diode",
 )
 
 
