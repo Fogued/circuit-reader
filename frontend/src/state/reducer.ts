@@ -129,13 +129,25 @@ export function needsReview(conf: number, id: string, doc: Doc, limit: number): 
   return conf < limit && !doc.reviewed.includes(id);
 }
 
+/**
+ * What the viewer, the review list and the exports show: items under the confidence limits are left out, and a
+ * text whose component is hidden loses its attachment and value.
+ */
+export function visibleItems(
+  doc: Doc,
+  limits: { compMin: number; textMin: number },
+): { components: Component[]; texts: TextItem[] } {
+  const components = doc.components.filter((c) => c.conf >= limits.compMin);
+  const ids = new Set(components.map((c) => c.id));
+  const texts = doc.texts
+    .filter((t) => t.conf >= limits.textMin)
+    .map((t) => (t.component_id !== null && !ids.has(t.component_id) ? { ...t, component_id: null, value: null } : t));
+  return { components, texts };
+}
+
 /** The corrected result: items under the given confidence thresholds are left out. */
 export function toResult(state: ReviewState, thresholds: { comp_conf: number; text_conf: number }): ReadResult | null {
   if (!state.meta || !state.doc) return null;
-  const components = state.doc.components.filter((c) => c.conf >= thresholds.comp_conf);
-  const ids = new Set(components.map((c) => c.id));
-  const texts = state.doc.texts
-    .filter((t) => t.conf >= thresholds.text_conf)
-    .map((t) => (t.component_id !== null && !ids.has(t.component_id) ? { ...t, component_id: null, value: null } : t));
+  const { components, texts } = visibleItems(state.doc, { compMin: thresholds.comp_conf, textMin: thresholds.text_conf });
   return { ...state.meta, components, texts, thresholds };
 }

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Component, TextItem } from "../types";
 import type { Action, Doc } from "../state/reducer";
-import { needsReview } from "../state/reducer";
+import { needsReview, visibleItems } from "../state/reducer";
+import { norm } from "../lib/units";
 import { COMPONENT_CLASSES, classColor } from "../lib/classes";
 import { engineering, unitOf } from "../lib/units";
 
@@ -32,17 +33,20 @@ const FILTER_LABEL: Record<Filter, string> = { all: "All", components: "Componen
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 export function ReviewPanel(p: Props) {
-  const { doc, limits } = p;
+  const { limits } = p;
+  // Same mapping as the viewer and the exports: a value is cleared when its component is hidden.
+  const vis = useMemo(() => visibleItems(p.doc, { compMin: limits.compMin, textMin: limits.textMin }), [p.doc, limits.compMin, limits.textMin]);
+  const doc = useMemo<Doc>(() => ({ ...p.doc, components: vis.components, texts: vis.texts }), [p.doc, vis]);
   const [filter, setFilter] = useState<Filter>("all");
   const [onlyReview, setOnlyReview] = useState(false);
 
   const rows = useMemo<Row[]>(() => {
     const all: Row[] = [
-      ...doc.components.filter((c) => c.conf >= limits.compMin).map((item) => ({ kind: "component" as const, item })),
-      ...doc.texts.filter((t) => t.conf >= limits.textMin).map((item) => ({ kind: "value" as const, item })),
+      ...vis.components.map((item) => ({ kind: "component" as const, item })),
+      ...vis.texts.map((item) => ({ kind: "value" as const, item })),
     ];
     return all.sort((a, b) => a.item.conf - b.item.conf);
-  }, [doc, limits.compMin, limits.textMin]);
+  }, [vis]);
 
   const flagged = rows.filter((r) => needsReview(r.item.conf, r.item.id, doc, limits.reviewBelow)).length;
   const shown = rows.filter(
@@ -99,7 +103,7 @@ export function ReviewPanel(p: Props) {
         </div>
         <ul className="items">
           {shown.map((r) => (
-            <ItemRow key={r.item.id} row={r} {...p} />
+            <ItemRow key={r.item.id} row={r} {...p} doc={doc} />
           ))}
           {shown.length === 0 && <li className="empty">Nothing to show with these filters.</li>}
         </ul>
@@ -208,7 +212,7 @@ function ItemRow({ row, ...p }: Props & { row: Row }) {
           {row.kind === "component" ? (
             <ComponentEditor c={row.item} dispatch={dispatch} />
           ) : (
-            <TextEditor t={row.item} doc={doc} compMin={p.limits.compMin} dispatch={dispatch} assigning={p.assigning} onAssigning={p.onAssigning} />
+            <TextEditor t={row.item} doc={doc} dispatch={dispatch} assigning={p.assigning} onAssigning={p.onAssigning} />
           )}
           <div className="actions">
             <button type="button" onClick={() => dispatch({ type: "toggleReviewed", id })}>
@@ -251,19 +255,21 @@ function ComponentEditor({ c, dispatch }: { c: Component; dispatch: (a: Action) 
 function TextEditor(props: {
   t: TextItem;
   doc: Doc;
-  /** Components under this confidence are hidden in the viewer and cannot be picked. */
-  compMin: number;
   dispatch: (a: Action) => void;
   assigning: boolean;
   onAssigning: (on: boolean) => void;
 }) {
   const { t, doc, dispatch } = props;
-  const attachable = doc.components.filter((c) => c.conf >= props.compMin);
+  const attachable = doc.components;
   const cls = doc.components.find((c) => c.id === t.component_id)?.cls ?? null;
   const eng = t.value !== null ? engineering(t.value, cls) : null;
   const [draft, setDraft] = useState(t.text);
   useEffect(() => setDraft(t.text), [t.text]);
-  const commit = () => dispatch({ type: "editText", id: t.id, text: draft });
+  const commit = () => {
+    dispatch({ type: "editText", id: t.id, text: draft });
+    // The stored text has its spaces removed; show the same so no stray leading space stays in the field.
+    setDraft(norm(draft));
+  };
   return (
     <>
       <div className="field">
@@ -297,7 +303,7 @@ function TextEditor(props: {
         <label htmlFor={`att-${t.id}`}>Attached to</label>
         <select
           id={`att-${t.id}`}
-          value={attachable.some((c) => c.id === t.component_id) ? (t.component_id ?? "") : ""}
+          value={t.component_id ?? ""}
           onChange={(e) => dispatch({ type: "reassign", id: t.id, componentId: e.target.value || null })}
         >
           <option value="">None</option>

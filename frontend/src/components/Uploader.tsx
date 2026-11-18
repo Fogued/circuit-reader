@@ -20,15 +20,17 @@ export function Uploader(p: Props) {
   return (
     <div className="uploader">
       <div
-        className={`dropzone${over ? " over" : ""}`}
+        className={`dropzone${over && !p.busy ? " over" : ""}${p.busy ? " disabled" : ""}`}
+        aria-disabled={p.busy}
         onDragOver={(e) => {
           e.preventDefault();
-          setOver(true);
+          if (!p.busy) setOver(true);
         }}
         onDragLeave={() => setOver(false)}
         onDrop={(e) => {
           e.preventDefault();
           setOver(false);
+          if (p.busy) return;
           const f = e.dataTransfer.files[0];
           if (f) p.onFile(f);
         }}
@@ -48,13 +50,15 @@ export function Uploader(p: Props) {
         <button type="button" className="primary" disabled={p.busy} onClick={() => input.current?.click()}>
           {p.busy ? "Working..." : "Upload image"}
         </button>
-        <span className="muted">or drop a PNG, JPEG or WebP here (max 10 MB)</span>
+        <span className="muted">
+          {p.busy ? "Busy: drops and examples are paused until this finishes" : "or drop a PNG, JPEG or WebP here (max 10 MB)"}
+        </span>
       </div>
       {p.gallery.length > 0 && (
         <ul className="gallery" aria-label="Bundled examples">
           {p.gallery.map((g) => (
             <li key={g.id}>
-              <button type="button" className={`thumb${p.currentId === g.id ? " current" : ""}`} onClick={() => p.onDemo(g)} aria-label={`Open example: ${g.title}`}>
+              <button type="button" className={`thumb${p.currentId === g.id ? " current" : ""}`} disabled={p.busy} onClick={() => p.onDemo(g)} aria-label={`Open example: ${g.title}`}>
                 <img src={demoUrl(g.image)} alt="" loading="lazy" />
                 <span>{g.title}</span>
               </button>

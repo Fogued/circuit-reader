@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Component, TextItem } from "../types";
 import { center, fitView, pairIds, placeLabels, zoomAt, type View } from "../lib/geometry";
+import { Disclosure } from "./Disclosure";
 import { FAMILIES, classColor, familyOf } from "../lib/classes";
 
 interface Props {
@@ -234,9 +235,9 @@ export function Viewer(p: Props) {
       </div>
       <ul className="legend" aria-label="Component families">
         {usedFamilies.map((f) => (
-          <li key={f.slot} title={f.members.join(", ")}>
+          <li key={f.slot}>
             <span className="swatch" style={{ background: `var(--cat-${f.slot})` }} />
-            {f.name}
+            {f.members.length > 1 ? <Disclosure label={f.name} text={f.members.join(", ")} className="legend-disc" /> : f.name}
           </li>
         ))}
         <li>

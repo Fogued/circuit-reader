@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type { DemoEntry, ReadResult } from "./types";
-import { waitForHealth, demoUrl, loadDemoIndex, loadDemoResult, readImage } from "./lib/api";
+import type { DemoEntry, Health, ReadResult } from "./types";
+import { waitForHealth, pollUntilLive, demoUrl, loadDemoIndex, loadDemoResult, readImage } from "./lib/api";
 import { DEFAULT_THRESHOLDS } from "./lib/metrics";
 import { baseName, buildYolo, download, toJson } from "./lib/export";
-import { canRedo, canUndo, initialState, reducer, toResult } from "./state/reducer";
+import { canRedo, canUndo, initialState, reducer, toResult, visibleItems } from "./state/reducer";
 import { Header, type Mode, type Tab } from "./components/Header";
+import { Disclosure } from "./components/Disclosure";
 import { Uploader } from "./components/Uploader";
 import { validateFile } from "./lib/files";
 import { Viewer } from "./components/Viewer";
@@ -31,23 +32,41 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "info" | "error"; text: string } | null>(null);
   const objectUrl = useRef<string | null>(null);
+  // Only one upload/read at a time: busyRef guards synchronously, requestId discards stale results.
+  const busyRef = useRef(false);
+  const requestId = useRef(0);
 
+  // Health: retry through the initial budget (the server may still be starting), then keep polling slowly in
+  // demo mode and switch to live when the backend comes up. The cleanup cancels every timer and request.
   useEffect(() => {
-    let alive = true;
-    const check = waitForHealth().then((h): Mode => {
-      const m: Mode = h?.mode === "live" ? "live" : "demo";
-      if (alive) {
-        setMode(m);
-        setModeDetail(h?.mode === "demo" ? (h.detail ?? null) : null);
-      }
-      return m;
+    const ac = new AbortController();
+    const { signal } = ac;
+    const apply = (h: Health | null) => {
+      if (signal.aborted) return;
+      setMode(h?.mode === "live" ? "live" : "demo");
+      setModeDetail(h?.mode === "demo" ? (h.detail ?? null) : null);
+    };
+    const check = waitForHealth({ signal }).then((h): Mode => {
+      apply(h);
+      return h?.mode === "live" ? "live" : "demo";
     });
     health.current = check;
-    loadDemoIndex().then((g) => alive && setGallery(g)).catch(() => undefined);
-    return () => {
-      alive = false;
-    };
+    void check.then(async (m) => {
+      if (m !== "demo" || signal.aborted) return;
+      const live = await pollUntilLive({ signal });
+      if (live) apply(live);
+    });
+    loadDemoIndex(signal).then((g) => !signal.aborted && setGallery(g)).catch(() => undefined);
+    return () => ac.abort();
   }, []);
+
+  // Results of requests started before an unmount (or superseded) are discarded.
+  useEffect(
+    () => () => {
+      requestId.current += 1;
+    },
+    [],
+  );
 
   useEffect(
     () => () => {
@@ -68,14 +87,21 @@ export default function App() {
 
   const openDemo = useCallback(
     async (entry: DemoEntry) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
+      const id = ++requestId.current;
       setBusy(true);
       setMessage(null);
       try {
-        show(await loadDemoResult(entry), demoUrl(entry.image), entry.id);
+        const result = await loadDemoResult(entry);
+        if (id === requestId.current) show(result, demoUrl(entry.image), entry.id);
       } catch (e) {
-        setMessage({ kind: "error", text: e instanceof Error ? e.message : "Could not load the example." });
+        if (id === requestId.current) setMessage({ kind: "error", text: e instanceof Error ? e.message : "Could not load the example." });
       } finally {
-        setBusy(false);
+        if (id === requestId.current) {
+          busyRef.current = false;
+          setBusy(false);
+        }
       }
     },
     [show],
@@ -83,8 +109,12 @@ export default function App() {
 
   const openFile = useCallback(
     async (file: File) => {
+      if (busyRef.current) return;
       const problem = validateFile(file);
       if (problem) return setMessage({ kind: "error", text: problem });
+      busyRef.current = true;
+      const id = ++requestId.current;
+      const current = () => id === requestId.current;
       setBusy(true);
       setMessage(null);
       try {
@@ -92,17 +122,22 @@ export default function App() {
         if (m === "checking" && health.current) {
           setMessage({ kind: "info", text: "Connecting to the model, your image is read as soon as it is ready." });
           m = await health.current;
+          if (!current()) return;
           setMessage(null);
         }
         if (m !== "live") return setMessage({ kind: "info", text: DEMO_NOTICE });
         const result = await readImage(file);
+        if (!current()) return;
         if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
         objectUrl.current = URL.createObjectURL(file);
         show(result, objectUrl.current, null);
       } catch (e) {
-        setMessage({ kind: "error", text: e instanceof Error ? e.message : "The request failed." });
+        if (current()) setMessage({ kind: "error", text: e instanceof Error ? e.message : "The request failed." });
       } finally {
-        setBusy(false);
+        if (current()) {
+          busyRef.current = false;
+          setBusy(false);
+        }
       }
     },
     [mode, show],
@@ -131,12 +166,8 @@ export default function App() {
   const meta = state.meta;
   const visible = useMemo(() => {
     if (!doc) return null;
-    const comps = doc.components.filter((c) => c.conf >= limits.compMin);
-    const ids = new Set(comps.map((c) => c.id));
-    const texts = doc.texts
-      .filter((t) => t.conf >= limits.textMin)
-      .map((t) => (t.component_id && !ids.has(t.component_id) ? { ...t, component_id: null, value: null } : t));
-    return { comps, texts };
+    const { components, texts } = visibleItems(doc, { compMin: limits.compMin, textMin: limits.textMin });
+    return { comps: components, texts };
   }, [doc, limits.compMin, limits.textMin]);
 
   const exportResult = useMemo(
@@ -192,13 +223,11 @@ export default function App() {
                     {visible.comps.length} components, {visible.texts.length} texts
                   </span>
                   {yolo && yolo.skipped.total > 0 && (
-                    <span
-                      className="muted small"
-                      data-testid="skipped-note"
-                      title={`YOLO export skips ${yolo.skipped.components} tiny components, ${yolo.skipped.texts} tiny texts and ${yolo.skipped.unknownClass} boxes with an unknown class`}
-                    >
-                      {yolo.skipped.total} skipped
-                    </span>
+                    <Disclosure
+                      label={`${yolo.skipped.total} skipped`}
+                      testId="skipped-note"
+                      text={`YOLO export skips ${yolo.skipped.components} tiny components, ${yolo.skipped.texts} tiny texts and ${yolo.skipped.unknownClass} boxes with an unknown class`}
+                    />
                   )}
                   <button type="button" onClick={() => doExport("json")}>Export JSON</button>
                   <button type="button" className="primary" onClick={() => doExport("yolo")}>Export YOLO labels</button>

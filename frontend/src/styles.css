@@ -542,7 +542,8 @@ main {
 .box.txt.sel rect {
   stroke-width: 3px;
 }
-.box.dim {
+/* Dim only the box shape; labels and their halos stay at full opacity so they keep their contrast. */
+.box.dim rect {
   opacity: 0.35;
 }
 .box.pick.comp rect {
@@ -844,9 +845,8 @@ main {
   margin: -6px 0 8px;
 }
 .chart {
-  width: 100%;
-  height: auto;
   display: block;
+  max-width: 100%;
   margin-bottom: 8px;
 }
 .chart .grid {
@@ -954,7 +954,9 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     transition: none !important;
     animation: none !important;
     scroll-behavior: auto !important;
@@ -1230,10 +1232,32 @@ button.danger {
 .chart .axis.tick {
   font-variant-numeric: tabular-nums;
 }
+.chart .axis {
+  font-size: 12px;
+}
 .chart .axis.value {
   fill: var(--text);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
+  /* Halo in the surface colour keeps value labels legible where they cross a gridline. */
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.chart .pt {
+  pointer-events: none;
+}
+.chart .pt:focus {
+  outline: none;
+}
+.chart .ring {
+  fill: none;
+  stroke: transparent;
+}
+.chart .pt:focus-visible .ring {
+  stroke: var(--accent);
+  stroke-width: 2;
 }
 .chart .bar {
   fill: var(--series-1);
@@ -1294,7 +1318,7 @@ button.danger {
 .tip .tip-name {
   color: var(--text-2);
 }
-.chart-wrap .tip[style*="left"] {
+.tip.tip-x {
   right: auto;
   transform: translateX(-50%);
 }
@@ -1361,5 +1385,77 @@ button.danger {
   .item-meta .id,
   .confbar {
     display: none;
+  }
+}
+
+/* Disclosures: detail reachable by keyboard and touch, not only by hover */
+.disclosure {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.disc-btn {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  min-height: 0;
+  font: inherit;
+  font-size: inherit;
+  color: var(--text-2);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.disc-btn:hover:not(:disabled) {
+  background: none;
+  color: var(--text);
+}
+.disc-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: min(320px, 80vw);
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: 0 4px 14px rgb(10 20 40 / 0.16);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  white-space: normal;
+}
+.disc-pop[hidden] {
+  display: none;
+}
+.legend .disc-btn {
+  color: var(--muted);
+}
+
+/* Busy: drops and example clicks are ignored, and look it */
+.dropzone.disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.thumb:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.scroll-hint {
+  display: none;
+  color: var(--muted);
+}
+@media (max-width: 640px) {
+  .scroll-hint {
+    display: block;
+  }
+  .table-scroll th[scope="row"] {
+    position: sticky;
+    left: 0;
+    background: var(--surface);
+    z-index: 1;
   }
 }

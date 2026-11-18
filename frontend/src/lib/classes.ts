@@ -24,9 +24,9 @@ export const TEXT_CLASS_ID = COMPONENT_CLASSES.length;
 /**
  * Component families: the viewer colours boxes by family (5 categorical slots) instead of one hue per class,
  * because more than 8 categorical colours cannot be told apart. Slot n maps to the CSS token --cat-n.
- * Palette check (scripts/validate_palette.js, slots 1-5, surfaces #fcfcfb / #1a1a19):
- *   adjacent pairs pass in light and dark (worst CVD dE 9.1 light / 8.4 dark, normal vision 19.6 / 19.3);
- *   --pairs all fails the CVD and normal-vision floors, and light slots 3-5 sit under 3:1 on the surface.
+ * Palette check (slots 1-5, surfaces #fcfcfb / #1a1a19): adjacent pairs pass in light and dark (worst CVD dE 9.1
+ * light / 8.4 dark, normal vision 19.6 / 19.3); all-pairs checks fail the CVD and normal-vision floors, and light
+ * slots 3-5 sit under 3:1 on the surface.
  * Class identity is therefore never colour-alone: every box carries its class label and the legend names the
  * families and their members.
  */

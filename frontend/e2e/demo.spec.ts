@@ -109,7 +109,7 @@ test("bar chart rows show a tooltip and the value line shows engineering notatio
   await expect(page.getByTestId("eng-t2")).toContainText("4.7 kH");
   await page.getByRole("tab", { name: "Metrics" }).click();
   await page.getByTestId("bar-chart").getByLabel(/^V-AC: AP50-95/).hover();
-  await expect(page.getByRole("status").filter({ hasText: "AP50-95" })).toContainText("V-AC");
+  await expect(page.locator(".tip")).toContainText("V-AC");
 });
 
 test("no horizontal scroll on a phone", async ({ page }) => {
@@ -119,6 +119,22 @@ test("no horizontal scroll on a phone", async ({ page }) => {
     if (tab === "metrics") await page.getByRole("tab", { name: "Metrics" }).click();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
+  }
+});
+
+test("chart text stays at least 11px on a 390px phone", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Metrics" }).click();
+  for (const id of ["bar-chart", "history-chart"]) {
+    // Effective size = CSS font-size x the scale the SVG is drawn at (1 when it is not scaled down).
+    const sizes = await page.getByTestId(id).evaluate((svg) => {
+      const el = svg as unknown as SVGSVGElement;
+      const scale = el.getBoundingClientRect().width / el.viewBox.baseVal.width;
+      return [...el.querySelectorAll("text")].map((t) => parseFloat(getComputedStyle(t).fontSize) * scale);
+    });
+    expect(sizes.length).toBeGreaterThan(0);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(11);
   }
 });
 

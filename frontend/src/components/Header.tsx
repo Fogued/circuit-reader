@@ -1,3 +1,5 @@
+import { Disclosure } from "./Disclosure";
+
 export type Mode = "checking" | "live" | "demo";
 export type Tab = "review" | "metrics";
 
@@ -26,6 +28,7 @@ export function Header(p: { mode: Mode; detail?: string | null; tab: Tab; onTab:
           >
             {p.mode === "live" ? "Live model" : p.mode === "demo" ? "Demo" : "Connecting to model…"}
           </span>
+          {p.mode === "demo" && p.detail && <Disclosure label="Why?" text={p.detail} testId="mode-reason" />}
         </div>
         <nav className="links" aria-label="Project links">
           <a href={REPO} target="_blank" rel="noreferrer">GitHub</a>

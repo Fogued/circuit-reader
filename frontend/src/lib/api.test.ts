@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { demoUrl, probeHealth, readImage, waitForHealth } from "./api";
+import { demoUrl, pollUntilLive, probeHealth, readImage, waitForHealth } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -15,9 +15,16 @@ describe("probeHealth", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(h)));
     expect(await probeHealth()).toEqual({ state: "ok", health: h });
   });
-  it("is unreachable on network errors", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
-    expect(await probeHealth()).toEqual({ state: "unreachable" });
+  it("treats connection refused as pending: the server may still be starting", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    expect(await probeHealth()).toEqual({ state: "pending" });
+  });
+  it("rejects when the caller aborts", async () => {
+    const ac = new AbortController();
+    vi.stubGlobal("fetch", vi.fn((_u: string, init: RequestInit) => new Promise((_r, rej) => init.signal?.addEventListener("abort", () => rej(new TypeError("x"))))));
+    const p = probeHealth(3000, ac.signal);
+    ac.abort();
+    await expect(p).rejects.toThrow();
   });
   it("is unreachable on HTML answers (static hosting)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<html></html>", { status: 200 })));
@@ -49,8 +56,14 @@ describe("waitForHealth", () => {
     expect(fn).toHaveBeenCalledTimes(3);
     expect(delays).toEqual([500, 1000]);
   });
-  it("does not retry when the server is unreachable", async () => {
-    const fn = vi.fn().mockRejectedValue(new TypeError("offline"));
+  it("retries connection refused until the budget is spent", async () => {
+    const fn = vi.fn().mockRejectedValueOnce(new TypeError("refused")).mockResolvedValue(json(okHealth));
+    vi.stubGlobal("fetch", fn);
+    expect(await waitForHealth({ sleep: () => Promise.resolve() })).toEqual(okHealth);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+  it("does not retry when the server answers with a 404", async () => {
+    const fn = vi.fn().mockResolvedValue(json({}, 404));
     vi.stubGlobal("fetch", fn);
     expect(await waitForHealth({ sleep: () => Promise.resolve() })).toBeNull();
     expect(fn).toHaveBeenCalledTimes(1);
@@ -65,6 +78,61 @@ describe("waitForHealth", () => {
     });
     expect(h).toBeNull();
     expect(t).toBeLessThan(20_000);
+  });
+});
+
+describe("fake timers", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("stops probing and clears its timer when aborted", async () => {
+    vi.useFakeTimers();
+    const fn = vi.fn().mockRejectedValue(new TypeError("refused"));
+    vi.stubGlobal("fetch", fn);
+    const ac = new AbortController();
+    const p = waitForHealth({ signal: ac.signal });
+    await vi.advanceTimersByTimeAsync(1600);
+    const calls = fn.mock.calls.length;
+    expect(calls).toBeGreaterThan(1);
+    ac.abort();
+    expect(await p).toBeNull();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fn.mock.calls.length).toBe(calls);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps polling slowly after the budget and resolves once the backend is live", async () => {
+    vi.useFakeTimers();
+    const fn = vi
+      .fn()
+      .mockResolvedValueOnce(json({ status: "ok", mode: "demo", classes: [] }))
+      .mockResolvedValueOnce(json({ status: "ok", mode: "demo", classes: [] }))
+      .mockResolvedValue(json(okHealth));
+    vi.stubGlobal("fetch", fn);
+    const p = pollUntilLive({ intervalMs: 15_000 });
+    await vi.advanceTimersByTimeAsync(14_000);
+    expect(fn).toHaveBeenCalledTimes(0);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(fn).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(fn).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await p).toEqual(okHealth);
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+
+  it("stops polling when aborted", async () => {
+    vi.useFakeTimers();
+    const fn = vi.fn().mockRejectedValue(new TypeError("refused"));
+    vi.stubGlobal("fetch", fn);
+    const ac = new AbortController();
+    const p = pollUntilLive({ intervalMs: 1000, signal: ac.signal });
+    await vi.advanceTimersByTimeAsync(3500);
+    const calls = fn.mock.calls.length;
+    ac.abort();
+    expect(await p).toBeNull();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fn.mock.calls.length).toBe(calls);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 
