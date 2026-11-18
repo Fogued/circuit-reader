@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { norm, unitOf, withUnit } from "./units";
+import { engineering, norm, unitOf, withUnit } from "./units";
 
 const OHM = "Ω";
 const OHM_SIGN = "Ω";
@@ -49,5 +49,27 @@ describe("withUnit", () => {
   it("leaves classes without a default unit alone", () => {
     expect(withUnit("1k", "GND")).toBe("1k");
     expect(withUnit("5", "V-AC")).toBe("5");
+  });
+});
+
+describe("engineering", () => {
+  const flat = (e: ReturnType<typeof engineering>) => e && { pretty: e.pretty, base: e.base?.replace(/\s/g, " ") ?? null };
+  it("reads a prefixed value with the class unit", () => {
+    expect(flat(engineering("4.7k", "Resistor"))).toEqual({ pretty: `4.7 k${OHM}`, base: `= 4 700 ${OHM}` });
+  });
+  it("handles every SI prefix", () => {
+    expect(flat(engineering("10pF", null))).toEqual({ pretty: "10 pF", base: "= 0.00000000001 F" });
+    expect(flat(engineering("2n", "Capacitor"))?.base).toBe("= 0.000000002 F");
+    expect(flat(engineering("10µF", null))?.base).toBe("= 0.00001 F");
+    expect(flat(engineering("100mH", null))?.base).toBe("= 0.1 H");
+    expect(flat(engineering("2.2M", "Resistor"))?.base).toBe(`= 2 200 000 ${OHM}`);
+    expect(flat(engineering("1G", "Resistor"))?.base).toBe(`= 1 000 000 000 ${OHM}`);
+  });
+  it("has no second line without a prefix", () => {
+    expect(engineering("10V", "V-DC")).toEqual({ pretty: "10 V", base: null });
+  });
+  it("returns null for anything else", () => {
+    expect(engineering("sin(wt)", "V-AC")).toBeNull();
+    expect(engineering("", null)).toBeNull();
   });
 });

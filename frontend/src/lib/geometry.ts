@@ -45,7 +45,7 @@ export interface LabelSpot {
 
 export interface LabelPlacement {
   spots: Map<string, LabelSpot>;
-  /** Value labels sit under their text box; exposed so the viewer draws them where they were reserved. */
+  /** Value labels sit under their text box (or above it when a component is in the way). */
   valueSpots: Map<string, LabelSpot>;
 }
 
@@ -67,31 +67,50 @@ export function placeLabels(
   const charW = fs * 0.62;
   const spots = new Map<string, LabelSpot>();
   const valueSpots = new Map<string, LabelSpot>();
-  const taken: Box[] = [];
-  for (const t of texts) {
-    taken.push(t.box);
-    const w = (t.value ?? t.text).length * charW;
-    const top = t.box[3] + gap;
-    valueSpots.set(t.id, { x: t.box[0], y: top + fs });
-    taken.push([t.box[0], top, t.box[0] + w, top + h]);
-  }
   const inside = (r: Box): boolean => r[0] >= 0 && r[1] >= 0 && r[2] <= imageW && r[3] <= imageH;
+  const firstFree = (anchors: [number, number][], w: number, obstacles: Box[]): [number, number] => {
+    const free = anchors.find(([x, top]) => {
+      const r: Box = [x, top, x + w, top + h];
+      return inside(r) && !obstacles.some((o) => overlaps(r, o));
+    });
+    return free ?? (anchors[0] as [number, number]);
+  };
+
+  // Value labels first: under the text box, else above it, else to its right; clear of every box.
+  const placed: Box[] = [];
+  for (const t of texts) {
+    const [x1, y1, x2, y2] = t.box;
+    const w = (t.value ?? t.text).length * charW;
+    const [x, top] = firstFree(
+      [
+        [x1, y2 + gap],
+        [x1, y1 - h - gap],
+        [x2 + gap, y1],
+      ],
+      w,
+      [...texts.map((o) => o.box), ...components.map((c) => c.box), ...placed],
+    );
+    placed.push([x, top, x + w, top + h]);
+    valueSpots.set(t.id, { x, y: top + fs });
+  }
+
+  // Class labels: above, below, left, right, then inside the top edge; clear of text boxes, value labels,
+  // the other components and the labels already placed.
   for (const c of components) {
     const w = c.cls.length * charW;
     const [x1, y1, x2, y2] = c.box;
-    const anchors: [number, number][] = [
-      [x1, y1 - h - gap],
-      [x1, y2 + gap],
-      [x1 - w - gap, y1],
-      [x2 + gap, y1],
-      [x1 + gap, y1 + gap],
-    ];
-    const free = anchors.find(([x, top]) => {
-      const r: Box = [x, top, x + w, top + h];
-      return inside(r) && !taken.some((o) => overlaps(r, o));
-    });
-    const [x, top] = free ?? (anchors[0] as [number, number]);
-    taken.push([x, top, x + w, top + h]);
+    const [x, top] = firstFree(
+      [
+        [x1, y1 - h - gap],
+        [x1, y2 + gap],
+        [x1 - w - gap, y1],
+        [x2 + gap, y1],
+        [x1 + gap, y1 + gap],
+      ],
+      w,
+      [...texts.map((t) => t.box), ...components.filter((o) => o.id !== c.id).map((o) => o.box), ...placed],
+    );
+    placed.push([x, top, x + w, top + h]);
     spots.set(c.id, { x, y: top + fs });
   }
   return { spots, valueSpots };

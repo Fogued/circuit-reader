@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ClassRow } from "../types";
 import { metrics, num, pct, sortRows, type Split } from "../lib/metrics";
-import { classColor } from "../lib/classes";
+import { familyOf } from "../lib/classes";
 
 type SortKey = keyof ClassRow;
 const COLUMNS: { key: SortKey; label: string; numeric: boolean }[] = [
@@ -12,6 +12,8 @@ const COLUMNS: { key: SortKey; label: string; numeric: boolean }[] = [
   { key: "AP50", label: "AP50", numeric: true },
   { key: "AP50-95", label: "AP50-95", numeric: true },
 ];
+
+const className = (c: string): string => (c === "text" ? "text (values)" : c);
 
 export function MetricsTab() {
   const [split, setSplit] = useState<Split>("test");
@@ -46,22 +48,27 @@ export function MetricsTab() {
       </div>
 
       <div className="cards">
-        <Card label="Component mAP50" value={num(det.components.mAP50)} />
-        <Card label="Component mAP50-95" value={num(det.components["mAP50-95"])} />
-        <Card label="Text AP50" value={num(det.text.AP50)} />
-        <Card label="End-to-end values" value={pct(e2e["found, read and attached"])} hint="found, read and attached" accent />
-        <Card label="Reader exact match" value={pct(reader["exact match"])} hint={`CER ${num(reader.CER)} (ground-truth crops)`} />
-        <Card label="Text found" value={pct(e2e.found)} hint={`${e2e.texts} text boxes`} />
+        <Card
+          hero
+          label="End-to-end values"
+          value={pct(e2e["found, read and attached"])}
+          hint={`Share of the ${e2e.texts} handwritten values found (${pct(e2e.found)}), read correctly and attached to the right component.`}
+        />
+        <Card label="Component mAP50" value={num(det.components.mAP50)} hint="Boxes overlapping the truth by 50% or more" />
+        <Card label="Component mAP50-95" value={num(det.components["mAP50-95"])} hint="Stricter: averaged over 50% to 95% overlap" />
+        <Card label="Text AP50" value={num(det.text.AP50)} hint="How well value boxes are located" />
+        <Card label="Reader exact match" value={pct(reader["exact match"])} hint={`Crop read exactly right, CER ${num(reader.CER)}`} />
       </div>
 
       <div className="metrics-grid">
         <section className="card-block">
           <h3>Per-class AP50-95</h3>
+          <p className="muted small">Ranked, {split === "test" ? "test" : "validation"} split. The table below has the same numbers.</p>
           <BarChart rows={byAp} />
         </section>
         <section className="card-block">
-          <h3>Reader history</h3>
-          <p className="muted small">Exact match per epoch on the validation split.</p>
+          <h3>Reader exact match per epoch</h3>
+          <p className="muted small">Validation split, one point per epoch.</p>
           <HistoryChart history={history} />
           <table className="data compact">
             <thead>
@@ -111,8 +118,12 @@ export function MetricsTab() {
               {rows.map((r) => (
                 <tr key={r.class}>
                   <th scope="row">
-                    <span className="swatch" style={r.class === "text" ? undefined : { background: classColor(r.class) }} data-dashed={r.class === "text"} />
-                    {r.class}
+                    <span
+                      className="swatch"
+                      style={r.class === "text" ? undefined : { background: `var(--cat-${familyOf(r.class).slot})` }}
+                      data-dashed={r.class === "text"}
+                    />
+                    {className(r.class)}
                   </th>
                   <td className="num">{r.n_gt}</td>
                   <td className="num">{num(r.P)}</td>
@@ -129,9 +140,11 @@ export function MetricsTab() {
   );
 }
 
-function Card(p: { label: string; value: string; hint?: string; accent?: boolean }) {
+type History = { epoch: number; "train loss": number; "exact match": number; CER: number }[];
+
+function Card(p: { label: string; value: string; hint?: string; hero?: boolean }) {
   return (
-    <div className={`stat${p.accent ? " accent" : ""}`}>
+    <div className={`stat${p.hero ? " hero" : ""}`}>
       <div className="stat-label">{p.label}</div>
       <div className="stat-value">{p.value}</div>
       {p.hint && <div className="stat-hint">{p.hint}</div>}
@@ -139,67 +152,131 @@ function Card(p: { label: string; value: string; hint?: string; accent?: boolean
   );
 }
 
+/** One series, one colour, bars ranked by value. The text row is muted: it is not a component class. */
 function BarChart({ rows }: { rows: ClassRow[] }) {
+  const [hover, setHover] = useState<number | null>(null);
   const W = 560;
-  const L = 124;
+  const L = 112;
   const R = 44;
-  const rowH = 22;
-  const H = rows.length * rowH + 8;
+  const rowH = 24;
+  const barH = 14;
+  const top = 4;
+  const plotH = rows.length * rowH;
+  const H = top + plotH + 22;
   const x = (v: number) => L + v * (W - L - R);
+  const cur = hover === null ? null : rows[hover];
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Bar chart of AP50-95 per class" data-testid="bar-chart">
-      {[0, 0.25, 0.5, 0.75, 1].map((g) => (
-        <g key={g}>
-          <line x1={x(g)} x2={x(g)} y1={0} y2={H - 8} className="grid" />
-        </g>
-      ))}
-      {rows.map((r, i) => {
-        const y = 4 + i * rowH;
-        return (
-          <g key={r.class}>
-            <text x={L - 8} y={y + 13} textAnchor="end" className="axis">{r.class}</text>
-            <rect
-              x={L}
-              y={y + 2}
-              width={Math.max(0, x(r["AP50-95"]) - L)}
-              height={rowH - 7}
-              rx={2}
-              style={{ fill: r.class === "text" ? "var(--muted)" : classColor(r.class) }}
-            />
-            <text x={x(r["AP50-95"]) + 6} y={y + 13} className="axis value">{num(r["AP50-95"])}</text>
+    <div className="chart-wrap">
+      <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Bar chart of AP50-95 per class, ranked" data-testid="bar-chart">
+        {[0, 0.25, 0.5, 0.75, 1].map((g) => (
+          <g key={g}>
+            <line x1={x(g)} x2={x(g)} y1={top} y2={top + plotH} className="grid" />
+            <text x={x(g)} y={top + plotH + 15} textAnchor="middle" className="axis tick">
+              {g === 0 ? "0" : g === 1 ? "1" : g.toFixed(2).replace(/0$/, "")}
+            </text>
           </g>
-        );
-      })}
-    </svg>
+        ))}
+        <line x1={L} x2={L} y1={top} y2={top + plotH} className="baseline" />
+        {rows.map((r, i) => {
+          const y = top + i * rowH;
+          const w = Math.max(0, x(r["AP50-95"]) - L);
+          const rad = Math.min(4, w / 2);
+          const by = y + (rowH - barH) / 2;
+          // Square at the baseline, 4px rounded at the data end.
+          const d = `M${L} ${by}h${w - rad}a${rad} ${rad} 0 0 1 ${rad} ${rad}v${barH - 2 * rad}a${rad} ${rad} 0 0 1 ${-rad} ${rad}h${-(w - rad)}z`;
+          return (
+            <g
+              key={r.class}
+              className={`bar-row${hover === i ? " on" : ""}`}
+              tabIndex={0}
+              onPointerEnter={() => setHover(i)}
+              onPointerLeave={() => setHover(null)}
+              onFocus={() => setHover(i)}
+              onBlur={() => setHover(null)}
+              aria-label={`${className(r.class)}: AP50-95 ${num(r["AP50-95"])}`}
+            >
+              <rect x={0} y={y} width={W} height={rowH} className="hit" />
+              <text x={L - 8} y={y + 16} textAnchor="end" className="axis">{className(r.class)}</text>
+              <path d={d} className={r.class === "text" ? "bar muted" : "bar"} />
+              <text x={x(r["AP50-95"]) + 6} y={y + 16} className="axis value">{num(r["AP50-95"])}</text>
+            </g>
+          );
+        })}
+      </svg>
+      {cur && hover !== null && (
+        <div className="tip" style={{ top: `${((top + hover * rowH) / H) * 100}%` }} role="status">
+          <strong className="mono">{num(cur["AP50-95"])}</strong> AP50-95
+          <span className="tip-name">{className(cur.class)}</span>
+          <span className="muted mono">AP50 {num(cur.AP50)} &middot; n {cur.n_gt}</span>
+        </div>
+      )}
+    </div>
   );
 }
 
-function HistoryChart({ history }: { history: { epoch: number; "exact match": number }[] }) {
-  const W = 320;
-  const H = 120;
-  const pad = { l: 40, r: 12, t: 10, b: 22 };
+/** One series: no legend, the heading names it. Crosshair snaps to the nearest epoch. */
+function HistoryChart({ history }: { history: History }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 480;
+  const H = 170;
+  const pad = { l: 52, r: 24, t: 22, b: 26 };
   const vals = history.map((h) => h["exact match"]);
-  const lo = Math.floor((Math.min(...vals) - 0.005) * 100) / 100;
-  const hi = Math.ceil((Math.max(...vals) + 0.005) * 100) / 100;
+  const vmin = Math.min(...vals);
+  const vmax = Math.max(...vals);
+  const span = vmax - vmin || 0.01;
+  const lo = vmin - span * 0.15;
+  const hi = vmax + span * 0.15;
   const n = history.length;
+  const last = n - 1;
   const x = (i: number) => pad.l + (n === 1 ? 0.5 : i / (n - 1)) * (W - pad.l - pad.r);
-  const y = (v: number) => pad.t + (1 - (v - lo) / (hi - lo || 1)) * (H - pad.t - pad.b);
+  const y = (v: number) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
   const d = history.map((h, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(h["exact match"]).toFixed(1)}`).join(" ");
+  // Ticks sit at values the series actually reaches.
+  const ticks = [...new Set([vmin, (vmin + vmax) / 2, vmax].map((v) => Number(v.toFixed(4))))];
+  const cur = hover === null ? null : history[hover];
+  const lastValue = history[last]?.["exact match"] ?? 0;
+
+  const nearest = (e: React.PointerEvent<SVGRectElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const f = (e.clientX - r.left) / (r.width || 1);
+    setHover(Math.min(last, Math.max(0, Math.round(f * last))));
+  };
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Line chart of reader exact match per epoch">
-      {[lo, (lo + hi) / 2, hi].map((g) => (
-        <g key={g}>
-          <line x1={pad.l} x2={W - pad.r} y1={y(g)} y2={y(g)} className="grid" />
-          <text x={pad.l - 6} y={y(g) + 4} textAnchor="end" className="axis">{pct(g, 0)}</text>
-        </g>
-      ))}
-      <path d={d} className="line" />
-      {history.map((h, i) => (
-        <g key={h.epoch}>
-          <circle cx={x(i)} cy={y(h["exact match"])} r={3.5} className="dot" />
-          <text x={x(i)} y={H - 6} textAnchor="middle" className="axis">{h.epoch}</text>
-        </g>
-      ))}
-    </svg>
+    <div className="chart-wrap">
+      <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label="Line chart of reader exact match per epoch" data-testid="history-chart">
+        {ticks.map((g) => (
+          <g key={g}>
+            <line x1={pad.l} x2={W - pad.r} y1={y(g)} y2={y(g)} className="grid" />
+            <text x={pad.l - 6} y={y(g) + 4} textAnchor="end" className="axis tick">{pct(g, 1)}</text>
+          </g>
+        ))}
+        {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={pad.t} y2={H - pad.b} className="crosshair" />}
+        <path d={d} className="line" />
+        {history.map((h, i) => (
+          <g key={h.epoch}>
+            <circle cx={x(i)} cy={y(h["exact match"])} r={i === last || i === hover ? 6 : 4.5} className={`dot${i === last ? " last" : ""}`} />
+            <text x={x(i)} y={H - 7} textAnchor="middle" className="axis tick">{h.epoch}</text>
+          </g>
+        ))}
+        <text x={x(last)} y={y(lastValue) - 11} textAnchor="end" className="axis value">{pct(lastValue, 1)}</text>
+        <rect
+          x={pad.l}
+          y={pad.t}
+          width={W - pad.l - pad.r}
+          height={H - pad.t - pad.b}
+          className="hit"
+          onPointerMove={nearest}
+          onPointerLeave={() => setHover(null)}
+        />
+      </svg>
+      {cur && hover !== null && (
+        <div className="tip" style={{ left: `${(x(hover) / W) * 100}%`, top: 0 }} role="status">
+          <strong className="mono">{pct(cur["exact match"], 1)}</strong> exact match
+          <span className="tip-name">Epoch {cur.epoch}</span>
+          <span className="muted mono">CER {cur.CER.toFixed(3)}</span>
+        </div>
+      )}
+    </div>
   );
 }

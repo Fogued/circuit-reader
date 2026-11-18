@@ -103,6 +103,15 @@ test("metrics tab shows the bundled results", async ({ page }) => {
   await expect(page.getByText("0.985").first()).toBeVisible();
 });
 
+test("bar chart rows show a tooltip and the value line shows engineering notation", async ({ page }) => {
+  await openExample(page);
+  await page.getByTestId("item-t2").getByRole("button").first().click();
+  await expect(page.getByTestId("eng-t2")).toContainText("4.7 kH");
+  await page.getByRole("tab", { name: "Metrics" }).click();
+  await page.getByTestId("bar-chart").getByLabel(/^V-AC: AP50-95/).hover();
+  await expect(page.getByRole("status").filter({ hasText: "AP50-95" })).toContainText("V-AC");
+});
+
 test("no horizontal scroll on a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   for (const tab of ["review", "metrics"]) {

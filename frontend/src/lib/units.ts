@@ -46,3 +46,39 @@ export function withUnit(text: string, cls: string): string {
   const unit = DEFAULT_UNIT[cls];
   return unitOf(text) || unit === undefined ? text : text + unit;
 }
+
+const PREFIX_EXP: Record<string, number> = { p: -12, n: -9, "μ": -6, u: -6, m: -3, k: 3, M: 6, G: 9 };
+
+export interface Engineering {
+  /** e.g. "4.7 kΩ" */
+  pretty: string;
+  /** e.g. "= 4 700 Ω", only when a prefix was used */
+  base: string | null;
+}
+
+/** Group the integer digits in threes with a thin separator ("4 700"). */
+function grouped(n: number): string {
+  const [int = "", frac] = n.toString().split(".");
+  const g = int.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return frac ? `${g}.${frac}` : g;
+}
+
+/**
+ * Display-only reading of a component value: "4.7k" + Resistor gives "4.7 kΩ" and "= 4 700 Ω".
+ * Returns null when the text is not a plain number with an optional SI prefix and unit.
+ * Never used for the exported text or the matching rules.
+ */
+export function engineering(text: string, cls: string | null): Engineering | null {
+  const t = norm(text);
+  const m = /^(\d+(?:\.\d+)?)([pnμumkMG])?(Hz|Ω|F|H|V|A)?$/.exec(t);
+  if (!m) return null;
+  const num = m[1] as string;
+  const prefix = m[2];
+  const unit = m[3] ?? (cls ? DEFAULT_UNIT[cls] : undefined) ?? "";
+  const pretty = `${num} ${prefix === "u" ? "μ" : (prefix ?? "")}${unit}`.trim();
+  if (!prefix) return { pretty, base: null };
+  const exp = PREFIX_EXP[prefix] as number;
+  const value = Number((Number(num) * 10 ** exp).toPrecision(12));
+  const base = exp > 0 ? grouped(value) : value.toLocaleString("en-US", { maximumFractionDigits: 15, useGrouping: false });
+  return { pretty, base: `= ${base} ${unit}`.trim() };
+}

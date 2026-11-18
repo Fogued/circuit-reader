@@ -67,6 +67,12 @@ describe("placeLabels", () => {
     expect(hits(r, text.box)).toBe(false);
   });
 
+  it("puts the value label above its text box when a component sits right below", () => {
+    const text = { id: "t0", box: [100, 70, 160, 98] as [number, number, number, number], value: "1k", text: "1k" };
+    const { valueSpots } = placeLabels([comp], [text], 12, 800, 480);
+    expect(valueSpots.get("t0")?.y).toBeLessThan(70);
+  });
+
   it("keeps labels clear of each other", () => {
     const other = { id: "c1", cls: "Resistor", box: [100, 170, 200, 230] as [number, number, number, number] };
     const a = placeLabels([comp, other], [], 12, 800, 480).spots;

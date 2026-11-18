@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COMPONENT_CLASSES, TEXT_CLASS_ID, classColor } from "./classes";
+import { COMPONENT_CLASSES, FAMILIES, TEXT_CLASS_ID, classColor, familyOf } from "./classes";
 import test from "../data/test_per_class_metrics.csv?raw";
 import { parseClassCsv } from "./metrics";
 
@@ -16,7 +16,15 @@ describe("COMPONENT_CLASSES", () => {
     const names = parseClassCsv(test).map((r) => r.class).filter((c) => c !== "text");
     expect([...names].sort()).toEqual([...COMPONENT_CLASSES].sort());
   });
-  it("gives every class a distinct colour", () => {
-    expect(new Set(COMPONENT_CLASSES.map(classColor)).size).toBe(17);
+  it("puts every class in exactly one family, five families", () => {
+    expect(FAMILIES).toHaveLength(5);
+    const members = FAMILIES.flatMap((f) => [...f.members]);
+    expect([...members].sort()).toEqual([...COMPONENT_CLASSES].sort());
+    expect(new Set(members).size).toBe(17);
+  });
+  it("colours by family", () => {
+    expect(classColor("Resistor")).toBe(classColor("Inductor"));
+    expect(classColor("Resistor")).not.toBe(classColor("GND"));
+    expect(familyOf("MOSFET-N").name).toBe("Semiconductors");
   });
 });

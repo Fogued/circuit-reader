@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Component, TextItem } from "../types";
 import { center, fitView, pairIds, placeLabels, zoomAt, type View } from "../lib/geometry";
-import { classColor } from "../lib/classes";
+import { FAMILIES, classColor, familyOf } from "../lib/classes";
 
 interface Props {
   imageUrl: string;
@@ -127,7 +127,10 @@ export function Viewer(p: Props) {
   const s = view.scale;
   const fs = 12 / s;
   const labels = useMemo(() => placeLabels(components, texts, fs, width, height), [components, texts, fs, width, height]);
-  const usedClasses = useMemo(() => [...new Set(components.map((c) => c.cls))].sort(), [components]);
+  const usedFamilies = useMemo(() => {
+    const slots = new Set(components.map((c) => familyOf(c.cls).slot));
+    return FAMILIES.filter((f) => slots.has(f.slot));
+  }, [components]);
 
   return (
     <div className="viewer-wrap">
@@ -194,7 +197,7 @@ export function Viewer(p: Props) {
                     onPointerLeave={() => p.onHover(null)}
                     onClick={() => clickAllowed() && (assigning ? p.onPickComponent(c.id) : p.onSelect(c.id))}
                   />
-                  <text x={labels.spots.get(c.id)?.x ?? c.box[0]} y={labels.spots.get(c.id)?.y ?? c.box[1] - 4 / s} fontSize={fs} style={{ fill: color }} className="label" strokeWidth={3 / s}>
+                  <text x={labels.spots.get(c.id)?.x ?? c.box[0]} y={labels.spots.get(c.id)?.y ?? c.box[1] - 4 / s} fontSize={fs} className="label" strokeWidth={3 / s}>
                     {c.cls}
                   </text>
                 </g>
@@ -229,11 +232,11 @@ export function Viewer(p: Props) {
         </div>
         {assigning && <div className="viewer-banner">Click a component to attach the selected value</div>}
       </div>
-      <ul className="legend" aria-label="Class colours">
-        {usedClasses.map((c) => (
-          <li key={c}>
-            <span className="swatch" style={{ background: classColor(c) }} />
-            {c}
+      <ul className="legend" aria-label="Component families">
+        {usedFamilies.map((f) => (
+          <li key={f.slot} title={f.members.join(", ")}>
+            <span className="swatch" style={{ background: `var(--cat-${f.slot})` }} />
+            {f.name}
           </li>
         ))}
         <li>

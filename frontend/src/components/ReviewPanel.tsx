@@ -3,7 +3,7 @@ import type { Component, TextItem } from "../types";
 import type { Action, Doc } from "../state/reducer";
 import { needsReview } from "../state/reducer";
 import { COMPONENT_CLASSES, classColor } from "../lib/classes";
-import { unitOf } from "../lib/units";
+import { engineering, unitOf } from "../lib/units";
 
 export interface Limits {
   compMin: number;
@@ -179,9 +179,27 @@ function ItemRow({ row, ...p }: Props & { row: Row }) {
           </>
         )}
         <span className="item-meta">
-          {flagged && <span className="pill warn">review</span>}
-          {reviewed && <span className="pill ok">reviewed</span>}
-          <span className="muted mono">{pct(conf)}</span>
+          {flagged && (
+            <span className="pill warn">
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                <path d="M5 1 9.5 9h-9z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                <path d="M5 4v2.2M5 7.4v.1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+              review
+            </span>
+          )}
+          {reviewed && (
+            <span className="pill ok">
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                <path d="m1.5 5.3 2.3 2.3L8.5 2.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              reviewed
+            </span>
+          )}
+          <span className="confbar" aria-hidden="true">
+            <span style={{ width: `${Math.round(conf * 100)}%` }} />
+          </span>
+          <span className="muted mono conf">{pct(conf)}</span>
           <span className="muted mono id">{id}</span>
         </span>
       </button>
@@ -241,6 +259,8 @@ function TextEditor(props: {
 }) {
   const { t, doc, dispatch } = props;
   const attachable = doc.components.filter((c) => c.conf >= props.compMin);
+  const cls = doc.components.find((c) => c.id === t.component_id)?.cls ?? null;
+  const eng = t.value !== null ? engineering(t.value, cls) : null;
   const [draft, setDraft] = useState(t.text);
   useEffect(() => setDraft(t.text), [t.text]);
   const commit = () => dispatch({ type: "editText", id: t.id, text: draft });
@@ -267,6 +287,12 @@ function TextEditor(props: {
         {t.value !== null && unitOf(t.text) === null && t.value !== t.text && " - unit added from the component class"}
         {t.value !== null && unitOf(t.text) === null && t.value === t.text && " - no unit in the text"}
       </p>
+      {eng && (
+        <p className="eng" data-testid={`eng-${t.id}`}>
+          <span className="mono">{eng.pretty}</span>
+          {eng.base && <span className="muted mono">{eng.base}</span>}
+        </p>
+      )}
       <div className="field">
         <label htmlFor={`att-${t.id}`}>Attached to</label>
         <select
