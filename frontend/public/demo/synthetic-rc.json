@@ -1,0 +1,18 @@
+{
+  "image": { "width": 800, "height": 480, "name": "synthetic-rc.svg" },
+  "components": [
+    { "id": "c0", "cls": "V-DC", "box": [78, 198, 162, 282], "conf": 0.97 },
+    { "id": "c1", "cls": "Resistor", "box": [254, 76, 354, 124], "conf": 0.95 },
+    { "id": "c2", "cls": "Inductor", "box": [536, 148, 584, 250], "conf": 0.74 },
+    { "id": "c3", "cls": "Capacitor", "box": [530, 284, 592, 318], "conf": 0.91 },
+    { "id": "c4", "cls": "GND", "box": [368, 424, 434, 458], "conf": 0.88 }
+  ],
+  "texts": [
+    { "id": "t0", "text": "10V", "box": [18, 226, 76, 256], "conf": 0.96, "component_id": "c0", "value": "10V" },
+    { "id": "t1", "text": "1kΩ", "box": [272, 44, 340, 74], "conf": 0.93, "component_id": "c1", "value": "1kΩ" },
+    { "id": "t2", "text": "4.7k", "box": [596, 188, 668, 220], "conf": 0.81, "component_id": "c2", "value": "4.7kH" },
+    { "id": "t3", "text": "10μF", "box": [600, 288, 680, 320], "conf": 0.66, "component_id": "c3", "value": "10μF" }
+  ],
+  "thresholds": { "comp_conf": 0.7057057057057057, "text_conf": 0.5885885885885885 },
+  "source": "synthetic-fixture"
+}

@@ -1,0 +1,8 @@
+[
+  {
+    "id": "synthetic-rc",
+    "title": "Synthetic RC circuit",
+    "image": "synthetic-rc.svg",
+    "result": "synthetic-rc.json"
+  }
+]
