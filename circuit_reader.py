@@ -205,7 +205,8 @@ class CircuitReader:
         self.text_conf = text_conf
         self.imgsz = imgsz
         self.detector = YOLO(str(detector))
-        # class ids follow the training order (alphabetical by name, as on the confusion-matrix axes)
+        # class ids follow the notebook's sorted COCO category ids, which are alphabetical by name (see the
+        # confusion-matrix axes of results/figures/test_confusion_matrix.png); the API's check_class_order enforces it
         names: dict[int, str] = dict(self.detector.names)
         self.names = names
         text_cls = next((i for i, n in names.items() if n == "text"), None)

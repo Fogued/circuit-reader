@@ -42,9 +42,12 @@ def main() -> None:
 
     seen: dict[str, Path] = {}
     for path in args.images:
-        if path.stem in seen:
-            sys.exit(f"duplicate image name '{path.stem}': {seen[path.stem]} and {path} (rename one of them)")
-        seen[path.stem] = path
+        key = path.stem.casefold()
+        if key == "index":
+            sys.exit(f"image name '{path.name}' is reserved (index.json is the example list); rename it")
+        if key in seen:
+            sys.exit(f"duplicate image name '{path.stem}': {seen[key]} and {path} (names compare case-insensitively)")
+        seen[key] = path
 
     reader = CircuitReader(args.detector, args.reader, comp_conf=args.comp_conf, text_conf=args.text_conf)
     args.out.mkdir(parents=True, exist_ok=True)

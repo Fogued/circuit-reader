@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import threading
 import time
+from collections.abc import MutableMapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -13,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from backend.app.main import MAX_UPLOAD_BYTES, create_app
+from backend.app.main import MAX_UPLOAD_BYTES, MULTIPART_OVERHEAD, UploadSizeLimit, create_app
 
 from .test_api import RESULTS, FakeReader, fake, image_bytes, live, post  # noqa: F401
 
@@ -84,9 +86,9 @@ def test_reads_are_serialised(live: TestClient, fake: FakeReader) -> None:  # no
 
     fake.read_image = slow  # type: ignore[method-assign]
     data = image_bytes()
-    with ThreadPoolExecutor(4) as ex:
-        codes = list(ex.map(lambda _: post(live, data).status_code, range(4)))
-    assert codes == [200] * 4
+    with ThreadPoolExecutor(2) as ex:
+        codes = list(ex.map(lambda _: post(live, data).status_code, range(2)))
+    assert codes == [200] * 2
     assert peak == 1
 
 
@@ -137,7 +139,8 @@ def test_lifespan_failure_falls_back_to_demo(monkeypatch: pytest.MonkeyPatch) ->
     with TestClient(create_app()) as client:
         body = client.get("/api/health").json()
         assert body["mode"] == "demo"
-        assert "bad weights" in body["detail"]
+        assert body["detail"] == "model failed to load; see server log"
+        assert "bad weights" not in str(body)
         assert post(client, image_bytes()).status_code == 503
 
 
@@ -148,3 +151,95 @@ def test_health_does_not_load(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("backend.app.main.load_reader", boom)
     # no lifespan is run here: nothing is loaded and health still answers
     assert TestClient(create_app()).get("/api/health").json()["mode"] == "demo"
+
+
+def test_busy_returns_429(live: TestClient, fake: FakeReader) -> None:  # noqa: F811
+    release = threading.Event()
+    original = fake.read_image
+
+    def blocked(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        release.wait(5)
+        return original(*args, **kwargs)
+
+    fake.read_image = blocked  # type: ignore[method-assign]
+    data = image_bytes()
+    with ThreadPoolExecutor(3) as ex:
+        first = [ex.submit(post, live, data) for _ in range(2)]
+        time.sleep(0.5)  # both slots are taken
+        r = post(live, data)
+        release.set()
+        assert [f.result().status_code for f in first] == [200, 200]
+    assert r.status_code == 429
+    assert r.json() == {"detail": "server busy, retry"}
+
+
+def test_health_and_metrics_are_coroutines() -> None:
+    app = create_app()
+    for path in ("/api/health", "/api/metrics"):
+        route = next(r for r in app.routes if getattr(r, "path", None) == path)
+        assert asyncio.iscoroutinefunction(route.endpoint)  # type: ignore[attr-defined]
+
+
+PART_HEAD = b'--b\r\nContent-Disposition: form-data; name="file"; filename="a.png"\r\nContent-Type: image/png\r\n\r\n'
+
+
+def test_chunked_upload_without_content_length_413(live: TestClient, fake: FakeReader) -> None:  # noqa: F811
+    def body() -> Any:
+        yield PART_HEAD
+        for _ in range(20):
+            yield b"\0" * (1 << 20)
+        yield b"\r\n--b--\r\n"
+
+    r = live.post(
+        "/api/read",
+        content=body(),
+        headers={"content-type": "multipart/form-data; boundary=b", "origin": "http://localhost:5173"},
+    )
+    assert "content-length" not in r.request.headers
+    assert r.status_code == 413
+    assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert fake.calls == []
+
+
+SCOPE = {"type": "http", "method": "POST", "path": "/api/read", "headers": [], "query_string": b""}
+
+
+def test_upload_limit_stops_reading_early() -> None:
+    limit = MULTIPART_OVERHEAD + MAX_UPLOAD_BYTES
+    chunks_read = 0
+    sent: list[MutableMapping[str, Any]] = []
+
+    async def receive() -> MutableMapping[str, Any]:
+        nonlocal chunks_read
+        chunks_read += 1
+        return {"type": "http.request", "body": b"\0" * (1 << 20), "more_body": True}
+
+    async def send(message: MutableMapping[str, Any]) -> None:
+        sent.append(message)
+
+    async def inner(scope: Any, receive: Any, send: Any) -> None:
+        while (await receive())["type"] != "http.disconnect":  # reads until the client stops
+            pass
+
+    asyncio.run(UploadSizeLimit(inner, "/api/read", limit)(SCOPE, receive, send))
+    assert chunks_read <= limit // (1 << 20) + 1  # about 11 MiB, not "everything"
+    assert [m["type"] for m in sent] == ["http.response.start", "http.response.body"]
+    assert sent[0]["status"] == 413
+
+
+def test_upload_limit_does_not_send_twice_after_response_started() -> None:
+    sent: list[MutableMapping[str, Any]] = []
+
+    async def receive() -> MutableMapping[str, Any]:
+        return {"type": "http.request", "body": b"\0" * 100, "more_body": True}
+
+    async def send(message: MutableMapping[str, Any]) -> None:
+        sent.append(message)
+
+    async def inner(scope: Any, receive: Any, send: Any) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        while (await receive())["type"] != "http.disconnect":
+            pass
+
+    asyncio.run(UploadSizeLimit(inner, "/api/read", 1000)(SCOPE, receive, send))
+    assert [m["type"] for m in sent] == ["http.response.start"]

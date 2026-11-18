@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 dependencies = ["numpy"]
 
 [project.optional-dependencies]
-full = ["ultralytics==8.4.182", "transformers==4.57.6", "torch", "opencv-python", "pillow"]
+full = ["ultralytics==8.4.182", "transformers==4.57.6", "torch==2.11.0", "opencv-python==4.14.0.94", "pillow==13.0.0"]
 
 [tool.setuptools]
 py-modules = ["circuit_reader"]

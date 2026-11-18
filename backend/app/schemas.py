@@ -9,9 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field
 # x1, y1, x2, y2 in image pixels
 Box = Annotated[tuple[float, float, float, float], Field(description="x1, y1, x2, y2 in image pixels")]
 
-# The 17 component classes in detector order: ids 0-16 follow the training order (alphabetical by name, as
-# shown on the confusion-matrix axes of results/figures/test_confusion_matrix.png). "text" is detector
-# class 17 and is not listed.
+# The 17 component classes in detector order. Ids 0-16 follow the notebook's sorted COCO category ids, which
+# are alphabetical by name (see the confusion-matrix axes of results/figures/test_confusion_matrix.png);
+# the runtime check_class_order (backend/app/reader.py) enforces it. "text" is detector class 17 and is not listed.
 COMPONENT_CLASSES: tuple[str, ...] = (
     "BJT-NPN",
     "BJT-PNP",

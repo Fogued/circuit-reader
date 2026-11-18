@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import threading
-import warnings
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -19,6 +18,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Uploa
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from PIL import Image, ImageOps, UnidentifiedImageError
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .reader import ImageReader, get_reader, load_reader
 from .schemas import COMPONENT_CLASSES, Health, Metrics, ReadResult
@@ -26,7 +26,9 @@ from .schemas import COMPONENT_CLASSES, Health, Metrics, ReadResult
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MULTIPART_OVERHEAD = 64 * 1024
-MAX_PIXELS = 40_000_000
+MAX_PIXELS = 25_000_000  # the detector resizes to 1024 px anyway
+MAX_CONCURRENT_READS = 2
+BUSY_WAIT_SECONDS = 0.1
 MAX_SIDE = 10_000
 ALLOWED_TYPES = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}
 # Pillow reports multi-picture phone JPEGs as MPO
@@ -48,18 +50,16 @@ def decode_image(data: bytes) -> np.ndarray:
     if not data:
         raise HTTPException(400, "empty file")
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(io.BytesIO(data)) as im:
-                if im.format not in ALLOWED_FORMATS:
-                    raise HTTPException(415, "unsupported image format; use PNG, JPEG or WEBP")
-                w, h = im.size
-                if w * h > MAX_PIXELS or max(w, h) > MAX_SIDE:
-                    raise HTTPException(413, "image dimensions too large")
-                rgb = np.asarray(ImageOps.exif_transpose(im).convert("RGB"))
+        with Image.open(io.BytesIO(data)) as im:
+            if im.format not in ALLOWED_FORMATS:
+                raise HTTPException(415, "unsupported image format; use PNG, JPEG or WEBP")
+            w, h = im.size  # known from the header, nothing is decoded yet
+            if w * h > min(MAX_PIXELS, Image.MAX_IMAGE_PIXELS or MAX_PIXELS) or max(w, h) > MAX_SIDE:
+                raise HTTPException(413, "image dimensions too large")
+            rgb = np.asarray(ImageOps.exif_transpose(im).convert("RGB"))
     except HTTPException:
         raise
-    except (Image.DecompressionBombWarning, Image.DecompressionBombError) as e:
+    except Image.DecompressionBombError as e:
         raise HTTPException(413, "image dimensions too large") from e
     except (UnidentifiedImageError, OSError, ValueError) as e:
         raise HTTPException(400, "cannot decode image") from e
@@ -81,33 +81,89 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.load_error = None
     try:
         app.state.reader = load_reader()
-    except Exception as e:
+    except Exception:
         log.exception("model loading failed, running in demo mode")
-        app.state.load_error = f"{type(e).__name__}: {e}"
+        app.state.load_error = True  # details stay in the server log, not in /api/health
     yield
+
+
+class UploadSizeLimit:
+    """Pure ASGI middleware: answer 413 as soon as the body of ``POST <path>`` exceeds ``limit`` bytes.
+
+    Checks ``Content-Length`` up front and also counts the bytes actually received, so chunked uploads
+    (no ``Content-Length``) are cut off too instead of being read to the end.
+    """
+
+    def __init__(self, app: ASGIApp, path: str, limit: int) -> None:
+        self.app = app
+        self.path = path
+        self.limit = limit
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] != self.path:
+            await self.app(scope, receive, send)
+            return
+        length = dict(scope["headers"]).get(b"content-length", b"")
+        if length.isdigit() and int(length) > self.limit:
+            await self._reject(scope, receive, send)
+            return
+
+        received = 0
+        started = False  # the app has begun its own response
+        rejected = False  # we sent the 413
+        over = False  # the body went over the limit
+
+        async def counting_receive() -> Message:
+            nonlocal received, rejected, over
+            if over:
+                return {"type": "http.disconnect"}
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.limit:
+                    # stop reading: the app sees a disconnect. Unless it already began a response, answer 413 right
+                    # now; whatever it sends afterwards is dropped.
+                    over = True
+                    if not started:
+                        rejected = True
+                        await self._reject(scope, receive, send)
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def guarded_send(message: Message) -> None:
+            nonlocal started
+            if rejected:
+                return
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, counting_receive, guarded_send)
+        except Exception:
+            if not over:
+                raise  # the app failed for its own reasons; after the cut-off its follow-up errors are noise
+
+    @staticmethod
+    async def _reject(scope: Scope, receive: Receive, send: Send) -> None:
+        await JSONResponse({"detail": "file too large (max 10 MB)"}, status_code=413)(scope, receive, send)
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="circuit-reader API", version="1.0.0", lifespan=lifespan)
     read_lock = threading.Lock()
+    slots = threading.BoundedSemaphore(int(os.environ.get("MAX_CONCURRENT_READS") or MAX_CONCURRENT_READS))
 
-    @app.middleware("http")
-    async def limit_read_size(request: Request, call_next: Any) -> Any:
-        if request.method == "POST" and request.url.path == "/api/read":
-            length = request.headers.get("content-length", "")
-            if length.isdigit() and int(length) > MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD:
-                return JSONResponse({"detail": "file too large (max 10 MB)"}, status_code=413)
-        return await call_next(request)
-
+    app.add_middleware(UploadSizeLimit, path="/api/read", limit=MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD)
     origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST"], allow_headers=["*"])
 
     @app.get("/api/health", response_model=Health)
-    def health(reader: Reader, request: Request) -> Health:
+    async def health(reader: Reader, request: Request) -> Health:
         return Health(
             mode="live" if reader is not None else "demo",
             classes=list(COMPONENT_CLASSES),
-            detail=getattr(request.app.state, "load_error", None),
+            detail="model failed to load; see server log" if getattr(request.app.state, "load_error", None) else None,
         )
 
     @app.post("/api/read", response_model=ReadResult)
@@ -121,16 +177,21 @@ def create_app() -> FastAPI:
             raise HTTPException(503, "model not loaded (demo mode)")
         if file.content_type not in ALLOWED_TYPES:
             raise HTTPException(415, "unsupported media type; use PNG, JPEG or WEBP")
-        data = file.file.read(MAX_UPLOAD_BYTES + 1)
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(413, "file too large (max 10 MB)")
-        bgr = decode_image(data)
-        with read_lock:
-            result = reader.read_image(bgr, file.filename or "image", comp_conf=comp_conf, text_conf=text_conf)
+        if not slots.acquire(timeout=BUSY_WAIT_SECONDS):
+            raise HTTPException(429, "server busy, retry")
+        try:
+            data = file.file.read(MAX_UPLOAD_BYTES + 1)
+            if len(data) > MAX_UPLOAD_BYTES:
+                raise HTTPException(413, "file too large (max 10 MB)")
+            bgr = decode_image(data)
+            with read_lock:
+                result = reader.read_image(bgr, file.filename or "image", comp_conf=comp_conf, text_conf=text_conf)
+        finally:
+            slots.release()
         return ReadResult.model_validate(result)
 
     @app.get("/api/metrics", response_model=Metrics)
-    def metrics(results: Annotated[Path, Depends(get_results_dir)]) -> dict[str, Any]:
+    async def metrics(results: Annotated[Path, Depends(get_results_dir)]) -> dict[str, Any]:
         current = ""
         try:
             out: dict[str, Any] = {}
