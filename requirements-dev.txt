@@ -1,4 +1,6 @@
 -r requirements.txt
+-r backend/requirements.txt
 pytest
 ruff
 mypy
+httpx

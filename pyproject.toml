@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "circuit-reader"
 version = "1.0.0"
@@ -10,10 +14,13 @@ dependencies = ["numpy"]
 [project.optional-dependencies]
 full = ["ultralytics==8.4.182", "transformers==4.57.6", "torch", "opencv-python", "pillow"]
 
+[tool.setuptools]
+py-modules = ["circuit_reader"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-extend-exclude = ["*.ipynb"]
+extend-exclude = ["*.ipynb", ".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -21,6 +28,8 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.10"
 ignore_missing_imports = true
+explicit_package_bases = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "backend/tests"]
+pythonpath = ["."]

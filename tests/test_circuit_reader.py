@@ -24,10 +24,12 @@ from circuit_reader import (  # noqa: E402
     with_unit,
 )
 
-OHM = "Ω"  # Greek capital omega
+OHM = "\u03a9"  # Greek capital omega
 OHM_SIGN = "Ω"  # ohm sign
-MICRO_SIGN = "µ"
-MU = "μ"
+MICRO_SIGN = "\u00b5"
+MU = "\u03bc"
+
+assert OHM != OHM_SIGN and MICRO_SIGN != MU  # a normalised source file would make these tests vacuous
 
 
 def test_norm_removes_spaces() -> None:

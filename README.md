@@ -44,8 +44,8 @@ Tuned thresholds: 0.71 for components, 0.59 for text (see [`results/detection_su
 ```python
 from circuit_reader import CircuitReader
 
-reader = CircuitReader("detector_yolo11m_1024/weights/best.pt", "trocr_values")  # comp_conf=0.71, text_conf=0.59
-texts, items = reader.read("your_circuit.png")
+reader = CircuitReader("detector_yolo11m_1024/weights/best.pt", "trocr_values")  # comp_conf≈0.71, text_conf≈0.59
+components, items = reader.read("your_circuit.png")
 for item in items:  # keys: text, text_box, cls, comp_box, value
     print(item["text"], "->", item["cls"], item["value"])
 ```
@@ -56,7 +56,7 @@ Or from the command line (prints JSON):
 python circuit_reader.py your_circuit.png --detector detector_yolo11m_1024/weights/best.pt --reader trocr_values
 ```
 
-Install the dependencies with `pip install -r requirements.txt`. [`results/pip_freeze.txt`](results/pip_freeze.txt) is the exact Kaggle environment.
+Install the dependencies with `pip install -r requirements.txt`. [`results/pip_freeze.txt`](results/pip_freeze.txt) is the exact Kaggle environment. Load only trusted weights: `.pt` files are pickles and can run code when loaded.
 
 ## Reproduce
 
@@ -66,10 +66,41 @@ Run [`circuit-reader.ipynb`](circuit-reader.ipynb) on [Kaggle](https://www.kaggl
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+pytest backend/tests tests
 ruff check .
-mypy circuit_reader.py
+ruff format --check .
+mypy circuit_reader.py backend tests scripts
 ```
+
+## Web app
+
+A review studio on top of the pipeline: upload an image, inspect the detections, correct classes, values and links, export the corrected labels (JSON, or YOLO `.txt` in the notebook's format) and browse the model metrics. The code is in [`backend/`](backend) (FastAPI) and `frontend/` (Vite, React, TypeScript).
+
+**Backend.** Without weights it runs in demo mode: `/api/health` and `/api/metrics` work, `/api/read` answers 503.
+
+```bash
+pip install -r requirements.txt -r backend/requirements.txt   # the first file is only needed in live mode
+export CIRCUIT_DETECTOR=path/to/best.pt CIRCUIT_READER=path/to/trocr_values   # omit for demo mode
+export CORS_ORIGINS=http://localhost:5173                                      # comma separated, this is the default
+uvicorn backend.app.main:app
+```
+
+| Endpoint | |
+| --- | --- |
+| `GET /api/health` | `{"status", "mode": "live" or "demo", "classes"}` |
+| `POST /api/read` | multipart field `file` (PNG, JPEG or WEBP, up to 10 MB); optional query `comp_conf`, `text_conf` in [0, 1]; returns components, texts, links and values |
+| `GET /api/metrics` | detection and value summaries and the per-class tables of `results/` |
+
+**Frontend.**
+
+```bash
+npm --prefix frontend install
+npm --prefix frontend run dev        # http://localhost:5173, proxies /api to the backend
+```
+
+**Demo-only build (static hosting).** `VITE_BASE=/circuit-reader/ npm --prefix frontend run build` produces a static site that needs no backend: the Metrics tab uses the bundled `results/` files and the gallery uses the examples in `frontend/public/demo/`. The manual workflow [`pages.yml`](.github/workflows/pages.yml) deploys it to Pages. To add real examples, run `python scripts/export_demo.py image.jpg --detector best.pt --reader trocr_values`.
+
+**Tests.** `pytest backend/tests tests` mocks the reader and needs neither the weights nor torch. [`ci.yml`](.github/workflows/ci.yml) runs ruff, mypy and pytest for the backend, and lint, type check, tests and build for the frontend.
 
 ## Limitations
 
