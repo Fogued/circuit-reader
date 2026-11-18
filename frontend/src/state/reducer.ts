@@ -1,5 +1,5 @@
 import type { Component, ReadResult, TextItem } from "../types";
-import { withUnit } from "../lib/units";
+import { norm, withUnit } from "../lib/units";
 
 /** The editable part of a result; this is what undo/redo snapshots. */
 export interface Doc {
@@ -66,11 +66,10 @@ export function reducer(state: ReviewState, action: Action): ReviewState {
     }
     case "editText": {
       const target = doc.texts.find((t) => t.id === action.id);
-      if (!target || target.text === action.text) return state;
+      const text = norm(action.text);
+      if (!target || target.text === text) return state;
       const cls = clsOf(doc, target.component_id);
-      const texts = doc.texts.map((t) =>
-        t.id === action.id ? { ...t, text: action.text, value: valueFor(action.text, cls) } : t,
-      );
+      const texts = doc.texts.map((t) => (t.id === action.id ? { ...t, text, value: valueFor(text, cls) } : t));
       return commit(state, { ...doc, texts });
     }
     case "reassign": {

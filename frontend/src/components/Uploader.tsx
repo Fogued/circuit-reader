@@ -46,7 +46,7 @@ export function Uploader(p: Props) {
           }}
         />
         <button type="button" className="primary" disabled={p.busy} onClick={() => input.current?.click()}>
-          {p.busy ? "Reading..." : "Upload image"}
+          {p.busy ? "Working..." : "Upload image"}
         </button>
         <span className="muted">or drop a PNG, JPEG or WebP here (max 10 MB)</span>
       </div>

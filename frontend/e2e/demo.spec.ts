@@ -112,3 +112,35 @@ test("no horizontal scroll on a phone", async ({ page }) => {
     expect(overflow).toBeLessThanOrEqual(0);
   }
 });
+
+test("a slow health check keeps the connecting state instead of locking into demo", async ({ page }) => {
+  let calls = 0;
+  await page.route("**/api/health", async (route) => {
+    calls += 1;
+    if (calls === 1) return; // never answers: the first probe times out
+    await route.fulfill({ json: { status: "ok", mode: "live", classes: [] } });
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("mode-badge")).toContainText("Connecting to model");
+  await expect(page.getByTestId("mode-badge")).toHaveText("Live model", { timeout: 15_000 });
+  expect(calls).toBeGreaterThan(1);
+});
+
+test("the demo badge shows the server's reason", async ({ page }) => {
+  await page.route("**/api/health", (route) =>
+    route.fulfill({ json: { status: "ok", mode: "demo", classes: [], detail: "weights not found" } }),
+  );
+  await page.goto("/");
+  await expect(page.getByTestId("mode-badge")).toHaveAttribute("title", "weights not found");
+});
+
+test("class labels do not sit on top of text boxes", async ({ page }) => {
+  await openExample(page);
+  const overlaps = await page.evaluate(() => {
+    const hit = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const labels = [...document.querySelectorAll('[data-testid="comp-box"] text')].map((n) => n.getBoundingClientRect());
+    const boxes = [...document.querySelectorAll('[data-testid="text-box"] rect')].map((n) => n.getBoundingClientRect());
+    return labels.filter((l) => boxes.some((b) => hit(l, b))).length;
+  });
+  expect(overlaps).toBe(0);
+});

@@ -7,7 +7,7 @@
     <!-- voltage source -->
     <circle cx="120" cy="240" r="38"/>
     <path d="M120 215 L120 229 M113 222 L127 222 M110 258 L130 258"/>
-    <!-- branch: resistor R2 then capacitor -->
+    <!-- branch: this second zigzag is a resistor; the fixture deliberately labels it Inductor so the review flow has a class to correct -->
     <path d="M560 150 L542 166 L578 182 L542 198 L578 214 L542 230 L560 246 L561 288"/>
     <path d="M535 290 L586 291 M536 312 L585 311"/>
     <path d="M561 312 L560 400"/>

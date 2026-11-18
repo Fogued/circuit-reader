@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Component, TextItem } from "../types";
-import { center, fitView, pairIds, zoomAt, type View } from "../lib/geometry";
+import { center, fitView, pairIds, placeLabels, zoomAt, type View } from "../lib/geometry";
 import { classColor } from "../lib/classes";
 
 interface Props {
@@ -48,7 +48,7 @@ export function Viewer(p: Props) {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [refit, width, height]);
+  }, [refit, width, height, p.imageUrl]);
 
   const zoom = useCallback((factor: number, px?: number, py?: number) => {
     const el = box.current;
@@ -126,6 +126,7 @@ export function Viewer(p: Props) {
   const byId = useMemo(() => new Map(components.map((c) => [c.id, c])), [components]);
   const s = view.scale;
   const fs = 12 / s;
+  const labels = useMemo(() => placeLabels(components, texts, fs, width, height), [components, texts, fs, width, height]);
   const usedClasses = useMemo(() => [...new Set(components.map((c) => c.cls))].sort(), [components]);
 
   return (
@@ -193,7 +194,7 @@ export function Viewer(p: Props) {
                     onPointerLeave={() => p.onHover(null)}
                     onClick={() => clickAllowed() && (assigning ? p.onPickComponent(c.id) : p.onSelect(c.id))}
                   />
-                  <text x={c.box[0]} y={c.box[1] - 4 / s} fontSize={fs} style={{ fill: color }} className="label" strokeWidth={3 / s}>
+                  <text x={labels.spots.get(c.id)?.x ?? c.box[0]} y={labels.spots.get(c.id)?.y ?? c.box[1] - 4 / s} fontSize={fs} style={{ fill: color }} className="label" strokeWidth={3 / s}>
                     {c.cls}
                   </text>
                 </g>
@@ -213,7 +214,7 @@ export function Viewer(p: Props) {
                     onPointerLeave={() => p.onHover(null)}
                     onClick={() => clickAllowed() && p.onSelect(t.id)}
                   />
-                  <text x={t.box[0]} y={t.box[3] + fs + 2 / s} fontSize={fs} className="label value" strokeWidth={3 / s}>
+                  <text x={labels.valueSpots.get(t.id)?.x ?? t.box[0]} y={labels.valueSpots.get(t.id)?.y ?? t.box[3] + fs} fontSize={fs} className="label value" strokeWidth={3 / s}>
                     {t.value ?? t.text}
                   </text>
                 </g>

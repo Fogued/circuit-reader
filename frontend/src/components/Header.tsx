@@ -3,7 +3,7 @@ export type Tab = "review" | "metrics";
 
 const REPO = "https://github.com/Fogued/circuit-reader";
 
-export function Header(p: { mode: Mode; tab: Tab; onTab: (t: Tab) => void }) {
+export function Header(p: { mode: Mode; detail?: string | null; tab: Tab; onTab: (t: Tab) => void }) {
   return (
     <header className="header">
       <div className="header-row">
@@ -16,9 +16,15 @@ export function Header(p: { mode: Mode; tab: Tab; onTab: (t: Tab) => void }) {
           <span
             className={`badge ${p.mode}`}
             data-testid="mode-badge"
-            title={p.mode === "live" ? "Connected to the model backend" : "No backend: bundled example only"}
+            title={
+              p.mode === "live"
+                ? "Connected to the model backend"
+                : p.mode === "checking"
+                  ? "Waiting for the backend, the models may still be loading"
+                  : (p.detail ?? "No backend: bundled example only")
+            }
           >
-            {p.mode === "live" ? "Live model" : p.mode === "demo" ? "Demo" : "Connecting"}
+            {p.mode === "live" ? "Live model" : p.mode === "demo" ? "Demo" : "Connecting to model…"}
           </span>
         </div>
         <nav className="links" aria-label="Project links">

@@ -40,6 +40,13 @@ describe("reducer", () => {
     expect(s2.doc?.texts[0]?.value).toBe("5V");
   });
 
+  it("stores the normalised text, like the model output", () => {
+    const s = run({ type: "editText", id: "t0", text: " 4.7 kΩ " });
+    expect(s.doc?.texts[0]).toMatchObject({ text: "4.7kΩ", value: "4.7kΩ" });
+    const mu = run({ type: "editText", id: "t0", text: "10µF" });
+    expect(mu.doc?.texts[0]?.text).toBe("10μF");
+  });
+
   it("reassigning recomputes the value; null clears it", () => {
     const s = run({ type: "reassign", id: "t0", componentId: "c1" });
     expect(s.doc?.texts[0]).toMatchObject({ component_id: "c1", value: "1kF" });

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { DemoEntry, ReadResult } from "./types";
-import { fetchHealth, demoUrl, loadDemoIndex, loadDemoResult, readImage } from "./lib/api";
+import { waitForHealth, demoUrl, loadDemoIndex, loadDemoResult, readImage } from "./lib/api";
 import { DEFAULT_THRESHOLDS } from "./lib/metrics";
-import { baseName, download, toJson, toYolo } from "./lib/export";
+import { baseName, buildYolo, download, toJson } from "./lib/export";
 import { canRedo, canUndo, initialState, reducer, toResult } from "./state/reducer";
 import { Header, type Mode, type Tab } from "./components/Header";
 import { Uploader } from "./components/Uploader";
@@ -17,6 +17,8 @@ const DEMO_NOTICE =
 
 export default function App() {
   const [mode, setMode] = useState<Mode>("checking");
+  const [modeDetail, setModeDetail] = useState<string | null>(null);
+  const health = useRef<Promise<Mode> | null>(null);
   const [tab, setTab] = useState<Tab>("review");
   const [state, dispatch] = useReducer(reducer, initialState);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -32,7 +34,15 @@ export default function App() {
 
   useEffect(() => {
     let alive = true;
-    void fetchHealth().then((h) => alive && setMode(h?.mode === "live" ? "live" : "demo"));
+    const check = waitForHealth().then((h): Mode => {
+      const m: Mode = h?.mode === "live" ? "live" : "demo";
+      if (alive) {
+        setMode(m);
+        setModeDetail(h?.mode === "demo" ? (h.detail ?? null) : null);
+      }
+      return m;
+    });
+    health.current = check;
     loadDemoIndex().then((g) => alive && setGallery(g)).catch(() => undefined);
     return () => {
       alive = false;
@@ -75,10 +85,16 @@ export default function App() {
     async (file: File) => {
       const problem = validateFile(file);
       if (problem) return setMessage({ kind: "error", text: problem });
-      if (mode !== "live") return setMessage({ kind: "info", text: DEMO_NOTICE });
       setBusy(true);
       setMessage(null);
       try {
+        let m = mode;
+        if (m === "checking" && health.current) {
+          setMessage({ kind: "info", text: "Connecting to the model, your image is read as soon as it is ready." });
+          m = await health.current;
+          setMessage(null);
+        }
+        if (m !== "live") return setMessage({ kind: "info", text: DEMO_NOTICE });
         const result = await readImage(file);
         if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
         objectUrl.current = URL.createObjectURL(file);
@@ -119,17 +135,21 @@ export default function App() {
     const ids = new Set(comps.map((c) => c.id));
     const texts = doc.texts
       .filter((t) => t.conf >= limits.textMin)
-      .map((t) => (t.component_id && !ids.has(t.component_id) ? { ...t, component_id: null } : t));
+      .map((t) => (t.component_id && !ids.has(t.component_id) ? { ...t, component_id: null, value: null } : t));
     return { comps, texts };
   }, [doc, limits.compMin, limits.textMin]);
 
-  const exportResult = () => toResult(state, { comp_conf: limits.compMin, text_conf: limits.textMin });
+  const exportResult = useMemo(
+    () => toResult(state, { comp_conf: limits.compMin, text_conf: limits.textMin }),
+    [state, limits.compMin, limits.textMin],
+  );
+  const yolo = useMemo(() => (exportResult ? buildYolo(exportResult) : null), [exportResult]);
   const doExport = (kind: "json" | "yolo") => {
-    const r = exportResult();
+    const r = exportResult;
     if (!r) return;
     const stem = baseName(r.image.name);
     if (kind === "json") download(`${stem}.json`, toJson(r), "application/json");
-    else download(`${stem}.txt`, toYolo(r), "text/plain");
+    else download(`${stem}.txt`, buildYolo(r).text, "text/plain");
   };
 
   const select = (id: string | null) => {
@@ -139,7 +159,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Header mode={mode} tab={tab} onTab={setTab} />
+      <Header mode={mode} detail={modeDetail} tab={tab} onTab={setTab} />
       <main>
         <div role="tabpanel" id="panel-review" aria-labelledby="tab-review" hidden={tab !== "review"}>
           <Uploader mode={mode} gallery={gallery} currentId={currentId} busy={busy} onFile={openFile} onDemo={openDemo} />
@@ -171,6 +191,15 @@ export default function App() {
                   <span className="muted small">
                     {visible.comps.length} components, {visible.texts.length} texts
                   </span>
+                  {yolo && yolo.skipped.total > 0 && (
+                    <span
+                      className="muted small"
+                      data-testid="skipped-note"
+                      title={`YOLO export skips ${yolo.skipped.components} tiny components, ${yolo.skipped.texts} tiny texts and ${yolo.skipped.unknownClass} boxes with an unknown class`}
+                    >
+                      {yolo.skipped.total} skipped
+                    </span>
+                  )}
                   <button type="button" onClick={() => doExport("json")}>Export JSON</button>
                   <button type="button" className="primary" onClick={() => doExport("yolo")}>Export YOLO labels</button>
                 </div>

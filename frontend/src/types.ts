@@ -29,6 +29,8 @@ export interface Health {
   status: string;
   mode: "live" | "demo";
   classes: string[];
+  /** Why the backend runs in demo mode, when it says so. */
+  detail?: string | null;
 }
 
 export interface DemoEntry {

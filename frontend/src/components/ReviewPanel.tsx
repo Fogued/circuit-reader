@@ -190,7 +190,7 @@ function ItemRow({ row, ...p }: Props & { row: Row }) {
           {row.kind === "component" ? (
             <ComponentEditor c={row.item} dispatch={dispatch} />
           ) : (
-            <TextEditor t={row.item} doc={doc} dispatch={dispatch} assigning={p.assigning} onAssigning={p.onAssigning} />
+            <TextEditor t={row.item} doc={doc} compMin={p.limits.compMin} dispatch={dispatch} assigning={p.assigning} onAssigning={p.onAssigning} />
           )}
           <div className="actions">
             <button type="button" onClick={() => dispatch({ type: "toggleReviewed", id })}>
@@ -233,11 +233,14 @@ function ComponentEditor({ c, dispatch }: { c: Component; dispatch: (a: Action) 
 function TextEditor(props: {
   t: TextItem;
   doc: Doc;
+  /** Components under this confidence are hidden in the viewer and cannot be picked. */
+  compMin: number;
   dispatch: (a: Action) => void;
   assigning: boolean;
   onAssigning: (on: boolean) => void;
 }) {
   const { t, doc, dispatch } = props;
+  const attachable = doc.components.filter((c) => c.conf >= props.compMin);
   const [draft, setDraft] = useState(t.text);
   useEffect(() => setDraft(t.text), [t.text]);
   const commit = () => dispatch({ type: "editText", id: t.id, text: draft });
@@ -268,11 +271,11 @@ function TextEditor(props: {
         <label htmlFor={`att-${t.id}`}>Attached to</label>
         <select
           id={`att-${t.id}`}
-          value={t.component_id ?? ""}
+          value={attachable.some((c) => c.id === t.component_id) ? (t.component_id ?? "") : ""}
           onChange={(e) => dispatch({ type: "reassign", id: t.id, componentId: e.target.value || null })}
         >
           <option value="">None</option>
-          {doc.components.map((c) => (
+          {attachable.map((c) => (
             <option key={c.id} value={c.id}>
               {c.id} &middot; {c.cls}
             </option>
