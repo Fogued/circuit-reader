@@ -1,0 +1,7 @@
+ultralytics==8.4.182
+# 5.x cannot load the TrOCR tokenizer
+transformers==4.57.6
+torch
+opencv-python
+numpy
+pillow
