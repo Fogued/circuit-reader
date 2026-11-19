@@ -34,6 +34,8 @@ export function MetricsTab() {
 
   return (
     <div className="metrics">
+      <div className="metrics-top">
+        <div className="metrics-left">
       <section>
         <p className="lead">
           On {e2e.texts.toLocaleString("en-US")} {heldOut}, <strong>{found}&nbsp;%</strong> were found, read exactly and attached to the right component.
@@ -62,13 +64,7 @@ export function MetricsTab() {
           meaning={`Value crops read exactly right. Character error rate ${num(reader.CER)}.`}
         />
       </dl>
-
-      <section className="sec">
-        <h3>AP50-95 by class</h3>
-        <p>Ranked, on the {split === "test" ? "test" : "validation"} split. The table below has the same numbers.</p>
-        <BarChart rows={byAp} />
-      </section>
-
+        </div>
       <section className="sec">
         <h3>Reader exact match by epoch</h3>
         <p>Validation split, one point per epoch.</p>
@@ -97,6 +93,14 @@ export function MetricsTab() {
           </table>
         </details>
       </section>
+      </div>
+
+      <section className="sec">
+        <h3>AP50-95 by class</h3>
+        <p>Ranked, on the {split === "test" ? "test" : "validation"} split. The table below has the same numbers.</p>
+        <BarChart rows={byAp} />
+      </section>
+
 
       <section className="sec">
         <h3>All classes</h3>

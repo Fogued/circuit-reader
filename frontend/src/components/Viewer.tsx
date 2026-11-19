@@ -142,7 +142,7 @@ export function Viewer(p: Props) {
       <div
         ref={box}
         className={`viewer${panning ? " panning" : ""}${assigning ? " assigning" : ""}`}
-        style={{ "--ar": `${width} / ${height}` } as React.CSSProperties}
+        style={{ "--ar": `${width} / ${height}`, "--arn": width / height } as React.CSSProperties}
         tabIndex={0}
         role="application"
         aria-label="Circuit image viewer. Plus and minus zoom, zero fits to screen, arrow keys pan."

@@ -216,7 +216,6 @@ function ItemRow({ row, ...p }: Props & { row: Row }) {
             </span>
           )}
           <span className="muted conf">{pct(conf)}</span>
-          <span className="muted id">{id}</span>
         </span>
       </button>
       {selected && (
