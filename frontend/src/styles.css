@@ -310,24 +310,27 @@ main {
 
 .upload-concept {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  margin: 0 0 16px;
-  padding: 12px 14px;
-  border: 1px dashed var(--rule);
-  background: var(--sheet);
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 0 8px 20px;
+  border-left: 1px solid var(--rule);
+  border-bottom: 2px solid transparent;
 }
 .upload-concept h2 {
   font-size: var(--fs-2);
   margin-bottom: 2px;
 }
 .upload-concept p {
-  max-width: 58ch;
+  max-width: 28ch;
   font-size: var(--fs-1);
 }
 .upload-concept button {
-  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: var(--fs-1);
 }
 
 .viewer-wrap {
@@ -1056,7 +1059,15 @@ main {
     gap: 4px 20px;
   }
   .upload-concept {
+    flex-direction: row;
     align-items: flex-start;
+    margin-top: 12px;
+    padding: 12px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+  .upload-concept p {
+    max-width: 30ch;
   }
 }
 

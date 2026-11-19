@@ -175,16 +175,22 @@ export default function App() {
           {meta && doc && visible && imageUrl && (
             <div className="workspace">
               <div className="drawing">
-                <Sheets gallery={gallery} currentId={currentId} onOpen={(e) => void openSheet(e)} />
-                <section className="upload-concept" aria-label="Future upload">
-                  <div>
-                    <h2>Run your own circuit</h2>
-                    <p className="muted">In the hosted app, you could upload a hand-drawn circuit here and run the model.</p>
-                  </div>
-                  <button type="button" disabled title="Demo only: uploading and model execution are not available">
-                    Choose file
-                  </button>
-                </section>
+                <Sheets
+                  gallery={gallery}
+                  currentId={currentId}
+                  onOpen={(e) => void openSheet(e)}
+                  after={
+                    <section className="upload-concept" aria-label="Future upload">
+                      <div>
+                        <h2>Run your own circuit</h2>
+                        <p className="muted">Upload a drawing to run the model</p>
+                      </div>
+                      <button type="button" disabled title="Demo only: uploading and model execution are not available">
+                        Choose file
+                      </button>
+                    </section>
+                  }
+                />
                 {meta.source !== "model" && (
                   <p className="note" data-testid="synthetic-note">
                     Synthetic example. Run scripts/export_demo.py with the trained weights to add real examples.

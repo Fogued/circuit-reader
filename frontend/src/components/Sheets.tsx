@@ -1,7 +1,13 @@
 import type { DemoEntry } from "../types";
+import type { ReactNode } from "react";
 
 /** The bundled examples as a set of sheets: text tabs, the open one underlined. */
-export function Sheets(p: { gallery: DemoEntry[]; currentId: string | null; onOpen: (e: DemoEntry) => void }) {
+export function Sheets(p: {
+  gallery: DemoEntry[];
+  currentId: string | null;
+  onOpen: (e: DemoEntry) => void;
+  after?: ReactNode;
+}) {
   if (p.gallery.length === 0) return null;
   return (
     <nav className="sheets" aria-label="Sheets">
@@ -17,6 +23,7 @@ export function Sheets(p: { gallery: DemoEntry[]; currentId: string | null; onOp
           <span className="sheet-title">{e.title}</span>
         </button>
       ))}
+      {p.after}
     </nav>
   );
 }

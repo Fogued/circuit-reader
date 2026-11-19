@@ -50,7 +50,7 @@ describe("App", () => {
     await openExample();
     const upload = screen.getByRole("region", { name: "Future upload" });
     expect(within(upload).getByRole("heading", { name: "Run your own circuit" })).toBeInTheDocument();
-    expect(within(upload).getByText(/could upload a hand-drawn circuit/i)).toBeInTheDocument();
+    expect(within(upload).getByText(/Upload a drawing to run the model/i)).toBeInTheDocument();
     expect(within(upload).getByRole("button", { name: "Choose file" })).toBeDisabled();
     expect(screen.queryByTestId("mode-badge")).toBeNull();
   });

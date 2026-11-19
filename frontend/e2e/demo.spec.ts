@@ -66,7 +66,7 @@ test("the first example renders on load and nothing calls an API", async ({ page
   await page.waitForLoadState("networkidle");
   expect(api).toEqual([]);
   const upload = page.getByRole("region", { name: "Future upload" });
-  await expect(upload).toContainText("In the hosted app");
+  await expect(upload).toContainText("Upload a drawing");
   await expect(upload.getByRole("button", { name: "Choose file" })).toBeDisabled();
 });
 
