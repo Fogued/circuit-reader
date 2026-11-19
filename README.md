@@ -103,8 +103,6 @@ npm --prefix frontend run dev        # http://localhost:5173, proxies /api to th
 
 **Tests.** `pytest backend/tests tests` mocks the reader and needs neither the weights nor torch. [`ci.yml`](.github/workflows/ci.yml) runs ruff, mypy and pytest for the backend, and lint, type check, tests and build for the frontend.
 
-**Hosted deployment.** The published site at [fogued.github.io/circuit-reader](https://fogued.github.io/circuit-reader/) talks to a live API on a free CPU [Hugging Face Space](https://huggingface.co/spaces/Fogued/circuit-reader), so you can upload your own drawing. The Space is built from [`space/Dockerfile`](space/Dockerfile) with the weights from [Fogued/circuit-reader-models](https://huggingface.co/Fogued/circuit-reader-models) baked in at a fixed revision, and [`space.yml`](.github/workflows/space.yml) redeploys it on every push to `main` that touches the backend (it needs the `HF_TOKEN` repository secret). The free Space sleeps after 48 h without visits; the first request then takes a minute or two while the site shows "Connecting to model…". Uploaded images are processed in memory and not stored.
-
 ## Limitations
 
 - Evaluated on clean scans only; phone photos need a lower threshold.
