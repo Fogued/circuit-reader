@@ -46,11 +46,13 @@ describe("App", () => {
     expect(urls.some((u) => u.includes("/api/"))).toBe(false);
   });
 
-  it("has no upload control and no mode badge", async () => {
+  it("shows the future upload concept as disabled and has no mode badge", async () => {
     await openExample();
-    expect(document.querySelector('input[type="file"]')).toBeNull();
+    const upload = screen.getByRole("region", { name: "Future upload" });
+    expect(within(upload).getByRole("heading", { name: "Run your own circuit" })).toBeInTheDocument();
+    expect(within(upload).getByText(/could upload a hand-drawn circuit/i)).toBeInTheDocument();
+    expect(within(upload).getByRole("button", { name: "Choose file" })).toBeDisabled();
     expect(screen.queryByTestId("mode-badge")).toBeNull();
-    expect(screen.queryByText(/upload/i)).toBeNull();
   });
 
   it("shows the synthetic label and draws every detection", async () => {

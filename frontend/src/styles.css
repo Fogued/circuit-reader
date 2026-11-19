@@ -308,6 +308,28 @@ main {
   font-weight: 600;
 }
 
+.upload-concept {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px dashed var(--rule);
+  background: var(--sheet);
+}
+.upload-concept h2 {
+  font-size: var(--fs-2);
+  margin-bottom: 2px;
+}
+.upload-concept p {
+  max-width: 58ch;
+  font-size: var(--fs-1);
+}
+.upload-concept button {
+  flex: 0 0 auto;
+}
+
 .viewer-wrap {
   min-width: 0;
 }
@@ -1032,6 +1054,9 @@ main {
     grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4px 20px;
+  }
+  .upload-concept {
+    align-items: flex-start;
   }
 }
 

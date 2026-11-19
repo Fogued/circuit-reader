@@ -65,8 +65,9 @@ test("the first example renders on load and nothing calls an API", async ({ page
   await expect(page.locator(".stage img")).toHaveJSProperty("complete", true);
   await page.waitForLoadState("networkidle");
   expect(api).toEqual([]);
-  await expect(page.locator('input[type="file"]')).toHaveCount(0);
-  await expect(page.getByText(/upload/i)).toHaveCount(0);
+  const upload = page.getByRole("region", { name: "Future upload" });
+  await expect(upload).toContainText("In the hosted app");
+  await expect(upload.getByRole("button", { name: "Choose file" })).toBeDisabled();
 });
 
 test("no heading, label, button or table header is set in capitals", async ({ page }) => {
