@@ -27,6 +27,8 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
+          # live API (Hugging Face Space deployed by space.yml); the site falls back to demo mode if it is down
+          VITE_API_URL: https://fogued-circuit-reader.hf.space
       - uses: actions/upload-pages-artifact@v3
         with:
           path: frontend/dist
