@@ -1,41 +1,12 @@
-import { Disclosure } from "./Disclosure";
-
-export type Mode = "checking" | "live" | "demo";
 export type Tab = "review" | "metrics";
 
 const REPO = "https://github.com/Fogued/circuit-reader";
 const NOTEBOOK = "https://www.kaggle.com/code/diegofogued/circuit-reader";
 
-export function Header(p: { mode: Mode; detail?: string | null; tab: Tab; onTab: (t: Tab) => void }) {
+export function Header(p: { tab: Tab; onTab: (t: Tab) => void }) {
   return (
     <header className="header">
-      <div className="header-row">
-        <div className="brand">
-          <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
-            <rect width="32" height="32" rx="7" className="logo-bg" />
-            <path d="M4 16h6l2-6 4 12 3-9 2 3h7" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <h1>Circuit Reader Studio</h1>
-          <span
-            className={`badge ${p.mode}`}
-            data-testid="mode-badge"
-            title={
-              p.mode === "live"
-                ? "Connected to the model backend"
-                : p.mode === "checking"
-                  ? "Waiting for the backend, the models may still be loading"
-                  : (p.detail ?? "No backend: bundled example only")
-            }
-          >
-            {p.mode === "live" ? "Live model" : p.mode === "demo" ? "Demo" : "Connecting to model…"}
-          </span>
-          {p.mode === "demo" && p.detail && <Disclosure label="Why?" text={p.detail} testId="mode-reason" />}
-        </div>
-        <nav className="links" aria-label="Project links">
-          <a href={REPO} target="_blank" rel="noreferrer">GitHub</a>
-          <a href={NOTEBOOK} target="_blank" rel="noreferrer">Notebook</a>
-        </nav>
-      </div>
+      <h1 className="brand">Circuit Reader</h1>
       <div className="tabs" role="tablist" aria-label="Sections">
         {(["review", "metrics"] as const).map((t) => (
           <button
@@ -58,6 +29,13 @@ export function Header(p: { mode: Mode; detail?: string | null; tab: Tab; onTab:
           </button>
         ))}
       </div>
+      <nav className="links" aria-label="Project links">
+        <a href={REPO} target="_blank" rel="noreferrer">GitHub</a>
+        <a href={NOTEBOOK} target="_blank" rel="noreferrer">Kaggle</a>
+      </nav>
+      <p className="tagline">
+        Reads component values from hand-drawn circuit diagrams. A person checks what it found, corrects it and exports the labels.
+      </p>
     </header>
   );
 }

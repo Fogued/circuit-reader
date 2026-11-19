@@ -1,25 +1,19 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type { DemoEntry, Health, ReadResult } from "./types";
-import { waitForHealth, pollUntilLive, demoUrl, loadDemoIndex, loadDemoResult, readImage } from "./lib/api";
+import type { DemoEntry, ReadResult } from "./types";
+import { demoUrl, loadDemoIndex, loadDemoResult } from "./lib/api";
 import { DEFAULT_THRESHOLDS } from "./lib/metrics";
 import { baseName, buildYolo, download, toJson } from "./lib/export";
-import { canRedo, canUndo, initialState, reducer, toResult, visibleItems } from "./state/reducer";
-import { Header, type Mode, type Tab } from "./components/Header";
+import { canRedo, canUndo, initialState, needsReview, reducer, toResult, visibleItems } from "./state/reducer";
+import { Header, type Tab } from "./components/Header";
 import { Disclosure } from "./components/Disclosure";
-import { Uploader } from "./components/Uploader";
-import { validateFile } from "./lib/files";
+import { Sheets } from "./components/Sheets";
 import { Viewer } from "./components/Viewer";
 import { ReviewPanel, type Limits } from "./components/ReviewPanel";
 import { MetricsTab } from "./components/MetricsTab";
 
 const REVIEW_BELOW = 0.85;
-const DEMO_NOTICE =
-  "Demo mode: inference needs the backend. Start the API with model weights (see the README) to read your own images.";
 
 export default function App() {
-  const [mode, setMode] = useState<Mode>("checking");
-  const [modeDetail, setModeDetail] = useState<string | null>(null);
-  const health = useRef<Promise<Mode> | null>(null);
   const [tab, setTab] = useState<Tab>("review");
   const [state, dispatch] = useReducer(reducer, initialState);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -29,56 +23,9 @@ export default function App() {
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ kind: "info" | "error"; text: string } | null>(null);
-  const objectUrl = useRef<string | null>(null);
-  // Only one upload/read at a time: busyRef guards synchronously, requestId discards stale results.
-  const busyRef = useRef(false);
-  const requestId = useRef(0);
-  const unmounted = useRef(new AbortController());
+  const [error, setError] = useState<string | null>(null);
 
-  // Health: retry through the initial budget (the server may still be starting), then keep polling slowly in
-  // demo mode and switch to live when the backend comes up. The cleanup cancels every timer and request.
-  useEffect(() => {
-    const ac = new AbortController();
-    const { signal } = ac;
-    const apply = (h: Health | null) => {
-      if (signal.aborted) return;
-      setMode(h?.mode === "live" ? "live" : "demo");
-      setModeDetail(h?.mode === "demo" ? (h.detail ?? null) : null);
-    };
-    const check = waitForHealth({ signal }).then((h): Mode => {
-      apply(h);
-      return h?.mode === "live" ? "live" : "demo";
-    });
-    health.current = check;
-    void check.then(async (m) => {
-      if (m !== "demo" || signal.aborted) return;
-      const live = await pollUntilLive({ signal });
-      if (live) apply(live);
-    });
-    loadDemoIndex(signal).then((g) => !signal.aborted && setGallery(g)).catch(() => undefined);
-    return () => ac.abort();
-  }, []);
-
-  // Results of requests started before an unmount (or superseded) are discarded.
-  useEffect(() => {
-    unmounted.current = new AbortController(); // fresh per mount: StrictMode mounts twice
-    const ac = unmounted.current;
-    return () => {
-      requestId.current += 1;
-      ac.abort();
-    };
-  }, []);
-
-  useEffect(
-    () => () => {
-      if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
-    },
-    [],
-  );
-
-  const show = useCallback((result: ReadResult, url: string, id: string | null) => {
+  const show = useCallback((result: ReadResult, url: string, id: string) => {
     dispatch({ type: "load", result });
     setImageUrl(url);
     setCurrentId(id);
@@ -88,63 +35,39 @@ export default function App() {
     setAssigning(false);
   }, []);
 
-  const openDemo = useCallback(
-    async (entry: DemoEntry) => {
-      if (busyRef.current) return;
-      busyRef.current = true;
-      const id = ++requestId.current;
-      setBusy(true);
-      setMessage(null);
+  // Only the latest sheet request may land: a slower, older one is dropped.
+  const requested = useRef(0);
+  const openSheet = useCallback(
+    async (entry: DemoEntry, signal?: AbortSignal) => {
+      const n = ++requested.current;
       try {
-        const result = await loadDemoResult(entry);
-        if (id === requestId.current) show(result, demoUrl(entry.image), entry.id);
-      } catch (e) {
-        if (id === requestId.current) setMessage({ kind: "error", text: e instanceof Error ? e.message : "Could not load the example." });
-      } finally {
-        if (id === requestId.current) {
-          busyRef.current = false;
-          setBusy(false);
+        const result = await loadDemoResult(entry, signal);
+        if (n === requested.current && !signal?.aborted) {
+          setError(null);
+          show(result, demoUrl(entry.image), entry.id);
         }
+      } catch (e) {
+        if (n === requested.current && !signal?.aborted) setError(e instanceof Error ? e.message : "Could not load the sheet.");
       }
     },
     [show],
   );
 
-  const openFile = useCallback(
-    async (file: File) => {
-      if (busyRef.current) return;
-      const problem = validateFile(file);
-      if (problem) return setMessage({ kind: "error", text: problem });
-      busyRef.current = true;
-      const id = ++requestId.current;
-      const current = () => id === requestId.current;
-      setBusy(true);
-      setMessage(null);
-      try {
-        let m = mode;
-        if (m === "checking" && health.current) {
-          setMessage({ kind: "info", text: "Connecting to the model, your image is read as soon as it is ready." });
-          m = await health.current;
-          if (!current()) return;
-          setMessage(null);
-        }
-        if (m !== "live") return setMessage({ kind: "info", text: DEMO_NOTICE });
-        const result = await readImage(file, undefined, { signal: unmounted.current.signal });
-        if (!current()) return;
-        if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
-        objectUrl.current = URL.createObjectURL(file);
-        show(result, objectUrl.current, null);
-      } catch (e) {
-        if (current()) setMessage({ kind: "error", text: e instanceof Error ? e.message : "The request failed." });
-      } finally {
-        if (current()) {
-          busyRef.current = false;
-          setBusy(false);
-        }
-      }
-    },
-    [mode, show],
-  );
+  // The page is complete at rest: the first sheet opens by itself.
+  useEffect(() => {
+    const ac = new AbortController();
+    loadDemoIndex(ac.signal)
+      .then((g) => {
+        if (ac.signal.aborted) return;
+        setGallery(g);
+        const first = g[0];
+        if (first) return openSheet(first, ac.signal);
+      })
+      .catch((e: unknown) => {
+        if (!ac.signal.aborted) setError(e instanceof Error ? e.message : "Could not load the sheets.");
+      });
+    return () => ac.abort();
+  }, [openSheet]);
 
   // Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y); leave native undo alone inside text fields.
   useEffect(() => {
@@ -186,63 +109,85 @@ export default function App() {
     else download(`${stem}.txt`, buildYolo(r).text, "text/plain");
   };
 
+  // What a person should look at (low confidence, not yet checked) and what a person changed.
+  const flagged = useMemo(() => {
+    const ids = new Set<string>();
+    if (!doc || !visible) return ids;
+    for (const it of [...visible.comps, ...visible.texts]) if (needsReview(it.conf, it.id, doc, limits.reviewBelow)) ids.add(it.id);
+    return ids;
+  }, [doc, visible, limits.reviewBelow]);
+  const edited = useMemo(() => {
+    const ids = new Set<string>();
+    const o = state.original;
+    if (!doc || !o) return ids;
+    const comps = new Map(o.components.map((c) => [c.id, c]));
+    const texts = new Map(o.texts.map((t) => [t.id, t]));
+    for (const c of doc.components) if (comps.get(c.id)?.cls !== c.cls) ids.add(c.id);
+    for (const t of doc.texts) {
+      const was = texts.get(t.id);
+      if (was && (was.text !== t.text || was.component_id !== t.component_id)) ids.add(t.id);
+    }
+    return ids;
+  }, [doc, state.original]);
+
   const select = (id: string | null) => {
     setSelectedId(id);
     if (id === null) setAssigning(false);
   };
 
+  const toolbar = (
+    <div className="toolbar" role="toolbar" aria-label="Edit and export">
+      <div className="group">
+        <button type="button" onClick={() => dispatch({ type: "undo" })} disabled={!canUndo(state)} title="Undo (Ctrl+Z)">
+          Undo
+        </button>
+        <button type="button" onClick={() => dispatch({ type: "redo" })} disabled={!canRedo(state)} title="Redo (Ctrl+Shift+Z)">
+          Redo
+        </button>
+        <button type="button" onClick={() => dispatch({ type: "reset" })} disabled={state.original === doc}>
+          Reset
+        </button>
+      </div>
+      <div className="group">
+        {yolo && yolo.skipped.total > 0 && (
+          <Disclosure
+            label={`${yolo.skipped.total} skipped`}
+            testId="skipped-note"
+            text={`YOLO export skips ${yolo.skipped.components} tiny components, ${yolo.skipped.texts} tiny texts and ${yolo.skipped.unknownClass} boxes with an unknown class`}
+          />
+        )}
+        <button type="button" onClick={() => doExport("json")}>Export JSON</button>
+        <button type="button" className="primary" onClick={() => doExport("yolo")}>Export YOLO labels</button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="app">
-      <Header mode={mode} detail={modeDetail} tab={tab} onTab={setTab} />
+      <Header tab={tab} onTab={setTab} />
       <main>
         <div role="tabpanel" id="panel-review" aria-labelledby="tab-review" hidden={tab !== "review"}>
-          <Uploader mode={mode} gallery={gallery} currentId={currentId} busy={busy} onFile={openFile} onDemo={openDemo} />
-          {message && (
-            <p className={`notice ${message.kind}`} role={message.kind === "error" ? "alert" : "status"} data-testid="message">
-              {message.text}
+          {error && (
+            <p className="notice" role="alert" data-testid="message">
+              {error}
             </p>
           )}
-          {meta && doc && visible && imageUrl ? (
-            <>
-              {meta.source !== "model" && (
-                <p className="notice synthetic" data-testid="synthetic-note">
-                  <strong>Synthetic example</strong> &mdash; run scripts/export_demo.py with the trained weights to add real examples.
-                </p>
-              )}
-              <div className="toolbar" role="toolbar" aria-label="Edit and export">
-                <div className="group">
-                  <button type="button" onClick={() => dispatch({ type: "undo" })} disabled={!canUndo(state)} title="Undo (Ctrl+Z)">
-                    Undo
-                  </button>
-                  <button type="button" onClick={() => dispatch({ type: "redo" })} disabled={!canRedo(state)} title="Redo (Ctrl+Shift+Z)">
-                    Redo
-                  </button>
-                  <button type="button" onClick={() => dispatch({ type: "reset" })} disabled={state.original === doc}>
-                    Reset
-                  </button>
-                </div>
-                <div className="group">
-                  <span className="muted small">
-                    {visible.comps.length} components, {visible.texts.length} texts
-                  </span>
-                  {yolo && yolo.skipped.total > 0 && (
-                    <Disclosure
-                      label={`${yolo.skipped.total} skipped`}
-                      testId="skipped-note"
-                      text={`YOLO export skips ${yolo.skipped.components} tiny components, ${yolo.skipped.texts} tiny texts and ${yolo.skipped.unknownClass} boxes with an unknown class`}
-                    />
-                  )}
-                  <button type="button" onClick={() => doExport("json")}>Export JSON</button>
-                  <button type="button" className="primary" onClick={() => doExport("yolo")}>Export YOLO labels</button>
-                </div>
-              </div>
-              <div className="workspace">
+          {meta && doc && visible && imageUrl && (
+            <div className="workspace">
+              <div className="drawing">
+                <Sheets gallery={gallery} currentId={currentId} onOpen={(e) => void openSheet(e)} />
+                {meta.source !== "model" && (
+                  <p className="note" data-testid="synthetic-note">
+                    Synthetic example. Run scripts/export_demo.py with the trained weights to add real examples.
+                  </p>
+                )}
                 <Viewer
                   imageUrl={imageUrl}
                   width={meta.image.width}
                   height={meta.image.height}
                   components={visible.comps}
                   texts={visible.texts}
+                  flagged={flagged}
                   activeId={hoverId ?? selectedId}
                   selectedId={selectedId}
                   assigning={assigning && selectedId !== null}
@@ -252,30 +197,25 @@ export default function App() {
                     if (selectedId) dispatch({ type: "reassign", id: selectedId, componentId: cid });
                     setAssigning(false);
                   }}
-                />
-                <ReviewPanel
-                  doc={doc}
-                  serverThresholds={meta.thresholds}
-                  limits={limits}
-                  onLimits={setLimits}
-                  activeId={hoverId}
-                  selectedId={selectedId}
-                  assigning={assigning}
-                  dispatch={dispatch}
-                  onHover={setHoverId}
-                  onSelect={select}
-                  onAssigning={setAssigning}
-                />
+                >
+                  {toolbar}
+                </Viewer>
               </div>
-            </>
-          ) : (
-            <div className="empty-state">
-              <h2>Review handwritten circuit detections</h2>
-              <p className="muted">
-                {mode === "live"
-                  ? "Upload a circuit drawing to run the model, then correct what it got wrong and export labels for retraining."
-                  : "Open the bundled example to try the review loop: fix a class, edit a value, undo, then export YOLO labels."}
-              </p>
+              <ReviewPanel
+                doc={doc}
+                serverThresholds={meta.thresholds}
+                limits={limits}
+                onLimits={setLimits}
+                flagged={flagged}
+                edited={edited}
+                activeId={hoverId}
+                selectedId={selectedId}
+                assigning={assigning}
+                dispatch={dispatch}
+                onHover={setHoverId}
+                onSelect={select}
+                onAssigning={setAssigning}
+              />
             </div>
           )}
         </div>

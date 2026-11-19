@@ -74,9 +74,9 @@ mypy circuit_reader.py backend tests scripts
 
 ## Web app
 
-A review studio on top of the pipeline: upload an image, inspect the detections, correct classes, values and links, export the corrected labels (JSON, or YOLO `.txt` in the notebook's format) and browse the model metrics. The code is in [`backend/`](backend) (FastAPI) and `frontend/` (Vite, React, TypeScript).
+The published site is a static showcase of precomputed results: four test-split circuits read by the trained model, a review panel to check and correct them, YOLO and JSON export of the corrected labels, and a metrics page. It has no upload and calls no server. The FastAPI backend in [`backend/`](backend) and the command line stay available for running the pipeline on your own images locally, with the weights from [Fogued/circuit-reader-models](https://huggingface.co/Fogued/circuit-reader-models) on Hugging Face. The frontend is in `frontend/` (Vite, React, TypeScript).
 
-**Backend.** Without weights it runs in demo mode: `/api/health` and `/api/metrics` work, `/api/read` answers 503.
+**Local backend (optional).** Without weights it runs in demo mode: `/api/health` and `/api/metrics` work, `/api/read` answers 503.
 
 ```bash
 pip install -r backend/requirements.txt
@@ -92,14 +92,14 @@ uvicorn backend.app.main:app
 | `POST /api/read` | multipart field `file` (PNG, JPEG or WEBP, up to 10 MB); optional query `comp_conf`, `text_conf` in [0, 1]; returns components, texts, links and values |
 | `GET /api/metrics` | detection and value summaries and the per-class tables of `results/` |
 
-**Frontend.**
+**Frontend.** The site only reads the files in `frontend/public/demo/` and the bundled `results/`; it does not talk to the backend.
 
 ```bash
 npm --prefix frontend install
-npm --prefix frontend run dev        # http://localhost:5173, proxies /api to the backend
+npm --prefix frontend run dev        # http://localhost:5173, the static showcase
 ```
 
-**Demo-only build (static hosting).** `VITE_BASE=/circuit-reader/ npm --prefix frontend run build` produces a static site that needs no backend: the Metrics tab uses the bundled `results/` files and the gallery shows four test-split circuits read by the trained model (`frontend/public/demo/`, never seen in training; two of them contain real reading errors to correct in the review panel). The manual workflow [`pages.yml`](.github/workflows/pages.yml) deploys it to Pages. To add real examples, run `python scripts/export_demo.py image.jpg --detector best.pt --reader trocr_values`.
+**Static build.** `VITE_BASE=/circuit-reader/ npm --prefix frontend run build` produces the site: the Metrics tab uses the bundled `results/` files and the gallery shows four test-split circuits read by the trained model (`frontend/public/demo/`, never seen in training; two of them contain real reading errors to correct in the review panel). The manual workflow [`pages.yml`](.github/workflows/pages.yml) deploys it to Pages. To add real examples, run `python scripts/export_demo.py image.jpg --detector best.pt --reader trocr_values`.
 
 **Tests.** `pytest backend/tests tests` mocks the reader and needs neither the weights nor torch. [`ci.yml`](.github/workflows/ci.yml) runs ruff, mypy and pytest for the backend, and lint, type check, tests and build for the frontend.
 
@@ -111,4 +111,4 @@ npm --prefix frontend run dev        # http://localhost:5173, proxies /api to th
 
 ## Licences
 
-This repository: AGPL-3.0 (see [LICENSE](LICENSE)) · Dataset: CC BY 4.0 ([Ahmed et al., *Data in Brief*](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11808513/)) · Ultralytics YOLO: AGPL-3.0 · TrOCR: see the [model card](https://huggingface.co/microsoft/trocr-base-handwritten) · Web fonts Inter and IBM Plex Mono: SIL OFL 1.1 (see [THIRD_PARTY_NOTICES.md](frontend/THIRD_PARTY_NOTICES.md)).
+This repository: AGPL-3.0 (see [LICENSE](LICENSE)) · Dataset: CC BY 4.0 ([Ahmed et al., *Data in Brief*](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11808513/)) · Ultralytics YOLO: AGPL-3.0 · TrOCR: see the [model card](https://huggingface.co/microsoft/trocr-base-handwritten) · Web fonts Barlow and Barlow Semi Condensed: SIL OFL 1.1 (see [THIRD_PARTY_NOTICES.md](frontend/THIRD_PARTY_NOTICES.md)).

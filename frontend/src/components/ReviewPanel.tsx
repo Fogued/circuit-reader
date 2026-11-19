@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Component, TextItem } from "../types";
 import type { Action, Doc } from "../state/reducer";
-import { needsReview, visibleItems } from "../state/reducer";
+import { visibleItems } from "../state/reducer";
 import { COMPONENT_CLASSES, classColor } from "../lib/classes";
 import { engineering, norm, unitOf } from "../lib/units";
 
@@ -16,6 +16,10 @@ interface Props {
   serverThresholds: { comp_conf: number; text_conf: number };
   limits: Limits;
   onLimits: (l: Limits) => void;
+  /** Ids a person should look at: low confidence and not yet checked. */
+  flagged: ReadonlySet<string>;
+  /** Ids a person changed. */
+  edited: ReadonlySet<string>;
   activeId: string | null;
   selectedId: string | null;
   assigning: boolean;
@@ -47,17 +51,21 @@ export function ReviewPanel(p: Props) {
     return all.sort((a, b) => a.item.conf - b.item.conf);
   }, [vis]);
 
-  const flagged = rows.filter((r) => needsReview(r.item.conf, r.item.id, doc, limits.reviewBelow)).length;
+  const toCheck = rows.filter((r) => p.flagged.has(r.item.id)).length;
   const shown = rows.filter(
-    (r) =>
-      (filter === "all" || (filter === "components") === (r.kind === "component")) &&
-      (!onlyReview || needsReview(r.item.conf, r.item.id, doc, limits.reviewBelow)),
+    (r) => (filter === "all" || (filter === "components") === (r.kind === "component")) && (!onlyReview || p.flagged.has(r.item.id)),
   );
 
   return (
     <aside className="panel" aria-label="Review panel">
-      <section className="panel-section">
-        <h2>Filters</h2>
+      <div className="panel-head">
+        <h2>Review</h2>
+        <p className={`count${toCheck ? " open" : ""}`} data-testid="review-count">
+          {toCheck ? `${toCheck} to check` : "Nothing left to check"}
+        </p>
+      </div>
+      <details className="thresholds">
+        <summary>Thresholds</summary>
         <Slider
           label="Component confidence"
           min={p.serverThresholds.comp_conf}
@@ -71,42 +79,31 @@ export function ReviewPanel(p: Props) {
           onChange={(v) => p.onLimits({ ...limits, textMin: v })}
         />
         <Slider
-          label="Needs review below"
+          label="Check items below"
           min={0}
           value={limits.reviewBelow}
           onChange={(v) => p.onLimits({ ...limits, reviewBelow: v })}
         />
-      </section>
-
-      <section className="panel-section list-section">
-        <div className="list-head">
-          <h2>
-            Items <span className="muted">({shown.length})</span>
-          </h2>
-          <span className={`pill ${flagged ? "warn" : "ok"}`} data-testid="review-count">
-            {flagged} need review
-          </span>
-        </div>
-        <div className="list-tools">
-          <div className="segmented" role="group" aria-label="Item type">
-            {(["all", "components", "values"] as const).map((f) => (
-              <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>
-                {FILTER_LABEL[f]}
-              </button>
-            ))}
-          </div>
-          <label className="check">
-            <input type="checkbox" checked={onlyReview} onChange={(e) => setOnlyReview(e.target.checked)} />
-            Needs review only
-          </label>
-        </div>
-        <ul className="items">
-          {shown.map((r) => (
-            <ItemRow key={r.item.id} row={r} {...p} doc={doc} />
+      </details>
+      <div className="list-tools">
+        <div className="filter" role="group" aria-label="Item type">
+          {(["all", "components", "values"] as const).map((f) => (
+            <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}>
+              {FILTER_LABEL[f]}
+            </button>
           ))}
-          {shown.length === 0 && <li className="empty">Nothing to show with these filters.</li>}
-        </ul>
-      </section>
+        </div>
+        <label className="check">
+          <input type="checkbox" checked={onlyReview} onChange={(e) => setOnlyReview(e.target.checked)} />
+          Only items to check
+        </label>
+      </div>
+      <ul className="items">
+        {shown.map((r) => (
+          <ItemRow key={r.item.id} row={r} {...p} doc={doc} />
+        ))}
+        {shown.length === 0 && <li className="empty">Nothing to show with these filters.</li>}
+      </ul>
     </aside>
   );
 }
@@ -130,10 +127,27 @@ function Slider(props: { label: string; min: number; value: number; onChange: (v
   );
 }
 
+function Pencil() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+      <path d="M1.5 10.5 2 8 8.6 1.4a1 1 0 0 1 1.4 0l.6.6a1 1 0 0 1 0 1.4L4 10z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function Tick() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+      <path d="m2 6.4 2.6 2.6L10 3.2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function ItemRow({ row, ...p }: Props & { row: Row }) {
   const { doc, dispatch } = p;
   const { id, conf } = row.item;
-  const flagged = needsReview(conf, id, doc, p.limits.reviewBelow);
+  const flagged = p.flagged.has(id);
+  const edited = p.edited.has(id);
   const reviewed = doc.reviewed.includes(id);
   const selected = p.selectedId === id;
   const active = p.activeId === id;
@@ -145,7 +159,7 @@ function ItemRow({ row, ...p }: Props & { row: Row }) {
   return (
     <li
       ref={li}
-      className={`item${selected ? " selected" : ""}${active ? " active" : ""}${flagged ? " flagged" : ""}`}
+      className={`item${selected ? " selected" : ""}${active ? " active" : ""}`}
       data-testid={`item-${id}`}
       onPointerEnter={() => p.onHover(id)}
       onPointerLeave={() => p.onHover(null)}
@@ -168,42 +182,41 @@ function ItemRow({ row, ...p }: Props & { row: Row }) {
           <>
             <span className="swatch dashed" />
             <span className="item-main">
-              <span className="mono">{row.item.text || "(empty)"}</span>
-              {row.item.value !== null && row.item.value !== row.item.text && (
+              {row.item.value !== null ? (
                 <>
-                  {" "}
-                  <span className="muted">&rarr;</span> <span className="mono" data-testid={`value-${id}`}>{row.item.value}</span>
+                  <span data-testid={`value-${id}`}>{row.item.value}</span>
+                  {row.item.value !== row.item.text && <span className="muted"> from {row.item.text || "(empty)"}</span>}
                 </>
-              )}
-              {row.item.value !== null && row.item.value === row.item.text && (
-                <span className="visually-hidden" data-testid={`value-${id}`}>{row.item.value}</span>
+              ) : (
+                <>
+                  {row.item.text || "(empty)"}
+                  <span className="muted"> not attached</span>
+                </>
               )}
             </span>
           </>
         )}
         <span className="item-meta">
+          {edited && (
+            <span className="mark red">
+              <Pencil />
+              Edited
+            </span>
+          )}
           {flagged && (
-            <span className="pill warn">
-              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                <path d="M5 1 9.5 9h-9z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-                <path d="M5 4v2.2M5 7.4v.1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              </svg>
-              review
+            <span className="mark red">
+              <Pencil />
+              Check
             </span>
           )}
           {reviewed && (
-            <span className="pill ok">
-              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                <path d="m1.5 5.3 2.3 2.3L8.5 2.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              reviewed
+            <span className="mark">
+              <Tick />
+              Checked
             </span>
           )}
-          <span className="confbar" aria-hidden="true">
-            <span style={{ width: `${Math.round(conf * 100)}%` }} />
-          </span>
-          <span className="muted mono conf">{pct(conf)}</span>
-          <span className="muted mono id">{id}</span>
+          <span className="muted conf">{pct(conf)}</span>
+          <span className="muted id">{id}</span>
         </span>
       </button>
       {selected && (
@@ -215,7 +228,7 @@ function ItemRow({ row, ...p }: Props & { row: Row }) {
           )}
           <div className="actions">
             <button type="button" onClick={() => dispatch({ type: "toggleReviewed", id })}>
-              {reviewed ? "Unmark reviewed" : "Mark reviewed"}
+              {reviewed ? "Mark as unchecked" : "Mark as checked"}
             </button>
             <button
               type="button"
@@ -226,7 +239,7 @@ function ItemRow({ row, ...p }: Props & { row: Row }) {
                 p.onAssigning(false);
               }}
             >
-              Delete false positive
+              Delete detection
             </button>
           </div>
         </div>
@@ -275,7 +288,6 @@ function TextEditor(props: {
         <label htmlFor={`text-${t.id}`}>Text</label>
         <input
           id={`text-${t.id}`}
-          className="mono"
           value={draft}
           autoComplete="off"
           spellCheck={false}
@@ -288,14 +300,14 @@ function TextEditor(props: {
         />
       </div>
       <p className="hint">
-        Value: <strong className="mono">{t.value ?? "none (not attached)"}</strong>
-        {t.value !== null && unitOf(t.text) === null && t.value !== t.text && " - unit added from the component class"}
-        {t.value !== null && unitOf(t.text) === null && t.value === t.text && " - no unit in the text"}
+        Value: <strong>{t.value ?? "none (not attached)"}</strong>
+        {t.value !== null && unitOf(t.text) === null && t.value !== t.text && ", unit added from the component class"}
+        {t.value !== null && unitOf(t.text) === null && t.value === t.text && ", no unit in the text"}
       </p>
       {eng && (
         <p className="eng" data-testid={`eng-${t.id}`}>
-          <span className="mono">{eng.pretty}</span>
-          {eng.base && <span className="muted mono">{eng.base}</span>}
+          <span>{eng.pretty}</span>
+          {eng.base && <span className="muted">{eng.base}</span>}
         </p>
       )}
       <div className="field">
@@ -308,14 +320,14 @@ function TextEditor(props: {
           <option value="">None</option>
           {attachable.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.id} &middot; {c.cls}
+              {c.id}, {c.cls}
             </option>
           ))}
         </select>
       </div>
       <div className="actions">
         <button type="button" aria-pressed={props.assigning} onClick={() => props.onAssigning(!props.assigning)}>
-          {props.assigning ? "Cancel picking" : "Pick component in viewer"}
+          {props.assigning ? "Cancel picking" : "Pick the component in the drawing"}
         </button>
       </div>
     </>

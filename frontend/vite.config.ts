@@ -18,11 +18,6 @@ const notices: Plugin = {
 export default defineConfig({
   base: process.env.VITE_BASE ?? "/",
   plugins: [react(), notices],
-  server: {
-    proxy: { "/api": process.env.VITE_API_PROXY ?? "http://localhost:8000" },
-  },
-  // The static preview has no backend: /api/* falls through and the app switches to demo mode.
-  preview: { proxy: {} },
   test: {
     environment: "jsdom",
     globals: true,

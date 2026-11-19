@@ -11,7 +11,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  // Demo mode: a static build served by `vite preview`, no backend running.
+  // The site is static: a build served by `vite preview`, no backend.
   webServer: {
     command: "npm run build && npm run preview -- --port 4173 --strictPort",
     url: "http://localhost:4173",

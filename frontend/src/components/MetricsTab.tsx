@@ -29,48 +29,52 @@ export function MetricsTab() {
   const toggleSort = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "class" ? "asc" : "desc" }));
 
+  const found = (e2e["found, read and attached"] * 100).toFixed(1);
+  const heldOut = split === "test" ? "held-out handwritten values" : "handwritten validation values";
+
   return (
     <div className="metrics">
-      <div className="metrics-head">
-        <div>
-          <h2>Model metrics</h2>
-          <p className="muted">
-            Measured on the held-out {split === "test" ? "test" : "validation"} split of the training notebook
-            ({det.components.conf.toFixed(3)} / {det.text.conf.toFixed(3)} confidence thresholds). Read from the bundled results files.
+      <section>
+        <p className="lead">
+          On {e2e.texts.toLocaleString("en-US")} {heldOut}, <strong>{found}&nbsp;%</strong> were found, read exactly and attached to the right component.
+        </p>
+        <div className="metrics-sub">
+          <div className="filter" role="group" aria-label="Split">
+            {(["test", "val"] as const).map((s) => (
+              <button key={s} type="button" aria-pressed={split === s} onClick={() => setSplit(s)}>
+                {s === "test" ? "Test" : "Validation"}
+              </button>
+            ))}
+          </div>
+          <p>
+            Confidence thresholds {det.components.conf.toFixed(3)} for components and {det.text.conf.toFixed(3)} for text.
           </p>
         </div>
-        <div className="segmented" role="group" aria-label="Split">
-          {(["test", "val"] as const).map((s) => (
-            <button key={s} type="button" aria-pressed={split === s} onClick={() => setSplit(s)}>
-              {s === "test" ? "Test" : "Validation"}
-            </button>
-          ))}
-        </div>
-      </div>
+      </section>
 
-      <div className="cards">
-        <Card
-          hero
-          label="End-to-end values"
-          value={pct(e2e["found, read and attached"])}
-          hint={`Share of the ${e2e.texts} handwritten values found (${pct(e2e.found)}), read correctly and attached to the right component.`}
+      <dl className="defs">
+        <Def term="Component mAP50" value={num(det.components.mAP50)} meaning="Boxes that overlap the truth by 50 % or more." />
+        <Def term="Component mAP50-95" value={num(det.components["mAP50-95"])} meaning="The stricter version, averaged over 50 % to 95 % overlap." />
+        <Def term="Text AP50" value={num(det.text.AP50)} meaning="How well the boxes around values are located." />
+        <Def
+          term="Reader exact match"
+          value={pct(reader["exact match"])}
+          meaning={`Value crops read exactly right. Character error rate ${num(reader.CER)}.`}
         />
-        <Card label="Component mAP50" value={num(det.components.mAP50)} hint="Boxes overlapping the truth by 50% or more" />
-        <Card label="Component mAP50-95" value={num(det.components["mAP50-95"])} hint="Stricter: averaged over 50% to 95% overlap" />
-        <Card label="Text AP50" value={num(det.text.AP50)} hint="How well value boxes are located" />
-        <Card label="Reader exact match" value={pct(reader["exact match"])} hint={`Crop read exactly right, CER ${num(reader.CER)}`} />
-      </div>
+      </dl>
 
-      <div className="metrics-grid">
-        <section className="card-block">
-          <h3>Per-class AP50-95</h3>
-          <p className="muted small">Ranked, {split === "test" ? "test" : "validation"} split. The table below has the same numbers.</p>
-          <BarChart rows={byAp} />
-        </section>
-        <section className="card-block">
-          <h3>Reader exact match per epoch</h3>
-          <p className="muted small">Validation split, one point per epoch.</p>
-          <HistoryChart history={history} />
+      <section className="sec">
+        <h3>AP50-95 by class</h3>
+        <p>Ranked, on the {split === "test" ? "test" : "validation"} split. The table below has the same numbers.</p>
+        <BarChart rows={byAp} />
+      </section>
+
+      <section className="sec">
+        <h3>Reader exact match by epoch</h3>
+        <p>Validation split, one point per epoch.</p>
+        <HistoryChart history={history} />
+        <details className="epochs">
+          <summary>Epoch values</summary>
           <table className="data compact">
             <thead>
               <tr>
@@ -91,12 +95,12 @@ export function MetricsTab() {
               ))}
             </tbody>
           </table>
-        </section>
-      </div>
+        </details>
+      </section>
 
-      <section className="card-block">
-        <h3>Per-class results</h3>
-        <p className="scroll-hint small">Scroll sideways to see every column &rarr;</p>
+      <section className="sec">
+        <h3>All classes</h3>
+        <p className="scroll-hint">Scroll sideways to see every column.</p>
         <div className="table-scroll">
           <table className="data" data-testid="class-table">
             <thead>
@@ -144,12 +148,12 @@ export function MetricsTab() {
 
 type History = { epoch: number; "train loss": number; "exact match": number; CER: number }[];
 
-function Card(p: { label: string; value: string; hint?: string; hero?: boolean }) {
+function Def(p: { term: string; value: string; meaning: string }) {
   return (
-    <div className={`stat${p.hero ? " hero" : ""}`}>
-      <div className="stat-label">{p.label}</div>
-      <div className="stat-value">{p.value}</div>
-      {p.hint && <div className="stat-hint">{p.hint}</div>}
+    <div className="def">
+      <dt>{p.term}</dt>
+      <dd className="v">{p.value}</dd>
+      <dd className="m">{p.meaning}</dd>
     </div>
   );
 }
@@ -203,10 +207,8 @@ function BarChart({ rows }: { rows: ClassRow[] }) {
           const y = top + i * rowH;
           const cy = y + rowH / 2;
           const w = Math.max(0, x(r["AP50-95"]) - L);
-          const rad = Math.min(4, w / 2);
           const by = cy - barH / 2;
-          // Square at the baseline, 4px rounded at the data end.
-          const d = `M${L} ${by}h${w - rad}a${rad} ${rad} 0 0 1 ${rad} ${rad}v${barH - 2 * rad}a${rad} ${rad} 0 0 1 ${-rad} ${rad}h${-(w - rad)}z`;
+          const d = `M${L} ${by}h${w}v${barH}h${-w}z`;
           const lines = narrow ? wrapLabel(className(r.class)) : [className(r.class)];
           return (
             <g
@@ -238,9 +240,9 @@ function BarChart({ rows }: { rows: ClassRow[] }) {
       </svg>
       {cur && hover !== null && (
         <div className="tip" style={{ top: top + hover * rowH }} aria-hidden="true">
-          <strong className="mono">{num(cur["AP50-95"])}</strong> AP50-95
+          <strong>{num(cur["AP50-95"])}</strong> AP50-95
           <span className="tip-name">{className(cur.class)}</span>
-          <span className="muted mono">AP50 {num(cur.AP50)} &middot; n {cur.n_gt}</span>
+          <span className="muted">AP50 {num(cur.AP50)}, {cur.n_gt} instances</span>
         </div>
       )}
     </div>
@@ -317,9 +319,9 @@ function HistoryChart({ history }: { history: History }) {
       </svg>
       {cur && hover !== null && (
         <div className="tip tip-x" style={{ left: tipLeft, top: 0 }} aria-hidden="true">
-          <strong className="mono">{pct(cur["exact match"], 1)}</strong> exact match
+          <strong>{pct(cur["exact match"], 1)}</strong> exact match
           <span className="tip-name">Epoch {cur.epoch}</span>
-          <span className="muted mono">CER {cur.CER.toFixed(3)}</span>
+          <span className="muted">CER {cur.CER.toFixed(3)}</span>
         </div>
       )}
     </div>

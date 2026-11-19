@@ -7,21 +7,15 @@ import App from "./App";
 
 const demo = (f: string) => readFileSync(join(__dirname, "..", "test-fixtures", "demo", f), "utf8");
 
-let onHealth: () => Promise<Response> = () => Promise.resolve(new Response("<html></html>", { status: 200 }));
-const json = (b: unknown) => new Response(JSON.stringify(b), { headers: { "content-type": "application/json" } });
+const fetchMock = vi.fn((url: string) => {
+  if (url.endsWith("/demo/index.json")) return Promise.resolve(new Response(demo("index.json")));
+  if (url.endsWith("/demo/synthetic-rc.json")) return Promise.resolve(new Response(demo("synthetic-rc.json")));
+  return Promise.resolve(new Response("not found", { status: 404 }));
+});
 
 beforeEach(() => {
-  onHealth = () => Promise.resolve(new Response("<html></html>", { status: 200 }));
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string) => {
-      if (url.endsWith("/api/health")) return onHealth();
-      if (url.includes("/api/read")) return Promise.resolve(new Response(demo("synthetic-rc.json")));
-      if (url.endsWith("/demo/index.json")) return Promise.resolve(new Response(demo("index.json")));
-      if (url.endsWith("/demo/synthetic-rc.json")) return Promise.resolve(new Response(demo("synthetic-rc.json")));
-      return Promise.resolve(new Response("<html></html>", { status: 200 }));
-    }),
-  );
+  fetchMock.mockClear();
+  vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -39,15 +33,24 @@ afterEach(() => {
 async function openExample() {
   const user = userEvent.setup();
   render(<App />);
-  await user.click(await screen.findByRole("button", { name: /Open example: Synthetic RC circuit/ }));
   await screen.findByTestId("overlay");
   return user;
 }
 
 describe("App", () => {
-  it("falls back to demo mode when the backend is unreachable", async () => {
+  it("opens the first sheet by itself and never calls an API", async () => {
     render(<App />);
-    expect(await screen.findByText("Demo")).toBeInTheDocument();
+    expect(await screen.findByTestId("overlay")).toBeInTheDocument();
+    expect(screen.getAllByTestId("comp-box")).toHaveLength(5);
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes("/api/"))).toBe(false);
+  });
+
+  it("has no upload control and no mode badge", async () => {
+    await openExample();
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+    expect(screen.queryByTestId("mode-badge")).toBeNull();
+    expect(screen.queryByText(/upload/i)).toBeNull();
   });
 
   it("shows the synthetic label and draws every detection", async () => {
@@ -62,7 +65,20 @@ describe("App", () => {
     const items = screen.getAllByTestId(/^item-/);
     expect(items[0]).toHaveAttribute("data-testid", "item-t3");
     expect(items[1]).toHaveAttribute("data-testid", "item-c2");
-    expect(screen.getByTestId("review-count")).toHaveTextContent("3 need review");
+    expect(screen.getByTestId("review-count")).toHaveTextContent("3 to check");
+  });
+
+  it("marks items that need a look with a ring in the drawing", async () => {
+    await openExample();
+    expect(document.querySelectorAll(".rings rect")).toHaveLength(3);
+  });
+
+  it("marks an item edited after a person changes it", async () => {
+    const user = await openExample();
+    expect(within(screen.getByTestId("item-c2")).queryByText("Edited")).toBeNull();
+    await user.click(within(screen.getByTestId("item-c2")).getByRole("button", { name: /Inductor/ }));
+    await user.selectOptions(screen.getByLabelText("Class", { exact: true }), "Resistor");
+    expect(within(screen.getByTestId("item-c2")).getByText("Edited")).toBeInTheDocument();
   });
 
   it("edits a value, then undoes it with the keyboard", async () => {
@@ -77,40 +93,12 @@ describe("App", () => {
     expect(screen.getByTestId("value-t2")).toHaveTextContent("4.7kΩ");
   });
 
-  it("explains that inference needs the backend in demo mode", async () => {
-    const user = await openExample();
-    await user.upload(screen.getByTestId("file-input"), new File(["x"], "a.png", { type: "image/png" }));
-    expect(await screen.findByTestId("message")).toHaveTextContent("needs the backend");
-  });
-
   it("shows the metrics from the bundled results", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("tab", { name: "Metrics" }));
     expect(screen.getByText("0.989")).toBeInTheDocument();
-    expect(screen.getByText("90.3%")).toBeInTheDocument();
-  });
-
-  it("shows the server's reason for demo mode in the badge tooltip", async () => {
-    onHealth = () => Promise.resolve(json({ status: "ok", mode: "demo", classes: [], detail: "weights not found" }));
-    render(<App />);
-    const badge = await screen.findByText("Demo");
-    expect(badge).toHaveAttribute("title", "weights not found");
-  });
-
-  it("waits for a slow health check instead of showing the demo notice", async () => {
-    let answer: (r: Response) => void = () => undefined;
-    onHealth = () => new Promise<Response>((r) => (answer = r));
-    URL.createObjectURL = vi.fn(() => "blob:test");
-    URL.revokeObjectURL = vi.fn();
-    const user = userEvent.setup();
-    render(<App />);
-    expect(screen.getByText(/Connecting to model/)).toBeInTheDocument();
-    await user.upload(screen.getByTestId("file-input"), new File(["x"], "a.png", { type: "image/png" }));
-    expect(await screen.findByTestId("message")).toHaveTextContent("Connecting to the model");
-    answer(json({ status: "ok", mode: "live", classes: [] }));
-    await screen.findByTestId("overlay");
-    expect(screen.queryByTestId("message")).toBeNull();
+    expect(screen.getByText(/were found, read exactly and attached/)).toHaveTextContent("On 1,194 held-out handwritten values, 90.3 % were found");
   });
 
   it("clears the value of a text whose component is hidden by the slider", async () => {
@@ -126,6 +114,13 @@ describe("App", () => {
     expect(options[0]).toBe("None");
   });
 
+  it("keeps the thresholds in a closed disclosure", async () => {
+    await openExample();
+    const details = screen.getByText("Thresholds").closest("details");
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute("open");
+  });
+
   it("reports skipped boxes next to the export button", async () => {
     await openExample();
     expect(screen.queryByTestId("skipped-note")).toBeNull();
@@ -133,5 +128,33 @@ describe("App", () => {
     await user.click(within(screen.getByTestId("item-c2")).getByRole("button", { name: /Inductor/ }));
     await user.selectOptions(screen.getByLabelText("Class", { exact: true }), "Resistor");
     expect(screen.queryByTestId("skipped-note")).toBeNull();
+  });
+});
+
+describe("sheets", () => {
+  it("lists the examples as numbered sheets and switches between them", async () => {
+    const entry = { id: "synthetic-rc", title: "Synthetic RC circuit", image: "synthetic-rc.svg", result: "synthetic-rc.json" };
+    const second = { ...entry, id: "second", title: "Second circuit" };
+    fetchMock.mockImplementation((url: string) => {
+      if (url.endsWith("/demo/index.json")) return Promise.resolve(new Response(JSON.stringify([entry, second])));
+      if (url.endsWith(".json")) return Promise.resolve(new Response(demo("synthetic-rc.json")));
+      return Promise.resolve(new Response("not found", { status: 404 }));
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByTestId("overlay");
+    const first = screen.getByRole("button", { name: /Sheet 1.*Synthetic RC circuit/ });
+    const next = screen.getByRole("button", { name: /Sheet 2.*Second circuit/ });
+    expect(first).toHaveAttribute("aria-current", "true");
+    expect(next).not.toHaveAttribute("aria-current");
+    await user.click(next);
+    await waitFor(() => expect(next).toHaveAttribute("aria-current", "true"));
+    expect(first).not.toHaveAttribute("aria-current");
+  });
+
+  it("says so when the sheets cannot be loaded", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response("nope", { status: 404 })));
+    render(<App />);
+    expect(await screen.findByTestId("message")).toHaveTextContent("Could not load the sheets");
   });
 });

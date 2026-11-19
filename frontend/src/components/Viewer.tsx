@@ -10,12 +10,16 @@ interface Props {
   height: number;
   components: Component[];
   texts: TextItem[];
+  /** Ids drawn with a red-pen ring: a person should look at them. */
+  flagged: ReadonlySet<string>;
   activeId: string | null;
   selectedId: string | null;
   assigning: boolean;
   onHover: (id: string | null) => void;
   onSelect: (id: string) => void;
   onPickComponent: (id: string) => void;
+  /** Rendered between the drawing and its legend (the edit and export bar). */
+  children?: React.ReactNode;
 }
 
 const MAX_ZOOM = 16;
@@ -153,7 +157,7 @@ export function Viewer(p: Props) {
           className="stage"
           style={{ width, height, transform: `translate(${view.x}px, ${view.y}px) scale(${s})` }}
         >
-          <img src={p.imageUrl} alt="Uploaded circuit drawing" width={width} height={height} draggable={false} />
+          <img src={p.imageUrl} alt="Hand-drawn circuit" width={width} height={height} draggable={false} />
           <svg
             viewBox={`0 0 ${width} ${height}`}
             width={width}
@@ -181,6 +185,11 @@ export function Viewer(p: Props) {
                   />
                 );
               })}
+            </g>
+            <g className="rings" aria-hidden="true">
+              {[...components, ...texts].filter((it) => p.flagged.has(it.id)).map((it) => (
+                <rect key={it.id} x={it.box[0] - 6} y={it.box[1] - 6} width={it.box[2] - it.box[0] + 12} height={it.box[3] - it.box[1] + 12} />
+              ))}
             </g>
             {components.map((c) => {
               const color = classColor(c.cls);
@@ -233,6 +242,7 @@ export function Viewer(p: Props) {
         </div>
         {assigning && <div className="viewer-banner">Click a component to attach the selected value</div>}
       </div>
+      {p.children}
       <ul className="legend" aria-label="Component families">
         {usedFamilies.map((f) => (
           <li key={f.slot}>
@@ -242,7 +252,11 @@ export function Viewer(p: Props) {
         ))}
         <li>
           <span className="swatch dashed" />
-          text / value
+          Value text
+        </li>
+        <li>
+          <span className="swatch ring-key" />
+          Check this
         </li>
       </ul>
     </div>
